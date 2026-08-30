@@ -1,0 +1,38 @@
+{
+  "name": "ffrwd/depth",
+  "version": "1.0.0",
+  "description": "Monocular depth as a matte, hosted in wasm: every frame leaves as a grayscale map of how far away it is, near bright and far dark, ready for everything that reads a matte beside the picture. The model is Depth Anything V2 (small), fetched at install.",
+  "license": "MIT",
+  "capabilities": [
+    "nn"
+  ],
+  "dependencies": {
+    "ffrwd/wasm": "0.10.0",
+    "ffrwd/mask_tools": "1.0.0"
+  },
+  "keywords": [
+    "depth",
+    "matte",
+    "mask",
+    "bokeh",
+    "blur",
+    "spotlight",
+    "nn"
+  ],
+  "lib": {
+    "depth": "src/depth.sql"
+  },
+  "bin": {
+    "bokeh": "recipes/bokeh.sql",
+    "depth-map": "recipes/depth-map.sql",
+    "near-spotlight": "recipes/near-spotlight.sql"
+  },
+  "models": {
+    "depth": {
+      "repo": "onnx-community/depth-anything-v2-small",
+      "revision": "4472b7362082ad9968fee890ca0f1e5aca36b93d",
+      "file": "onnx/model.onnx",
+      "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+    }
+  }
+}

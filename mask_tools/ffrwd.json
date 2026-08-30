@@ -1,0 +1,23 @@
+{
+  "name": "ffrwd/mask_tools",
+  "version": "1.0.0",
+  "description": "Composition over a grayscale matte, pure SQL over native ffmpeg: mask a filtered copy in, blur or mosaic where the matte is white, spotlight what it keeps, or cut it out over a new background. Model-agnostic - any matte beside any stream.",
+  "license": "MIT",
+  "keywords": [
+    "mask",
+    "matte",
+    "maskedmerge",
+    "blur",
+    "mosaic",
+    "spotlight",
+    "cutout",
+    "composite"
+  ],
+  "lib": {
+    "masked": "src/composite.sql",
+    "blur_where": "src/composite.sql",
+    "mosaic_where": "src/composite.sql",
+    "spotlight": "src/composite.sql",
+    "cutout": "src/composite.sql"
+  }
+}
