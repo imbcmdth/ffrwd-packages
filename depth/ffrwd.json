@@ -1,7 +1,7 @@
 {
   "name": "ffrwd/depth",
-  "version": "1.0.0",
-  "description": "Monocular depth as a matte, hosted in wasm: every frame leaves as a grayscale map of how far away it is, near bright and far dark, ready for everything that reads a matte beside the picture. The model is Depth Anything V2 (small), fetched at install.",
+  "version": "1.0.1",
+  "description": "Monocular depth as a matte using the Depth Anything V2 (small) model.",
   "license": "MIT",
   "capabilities": [
     "nn"
