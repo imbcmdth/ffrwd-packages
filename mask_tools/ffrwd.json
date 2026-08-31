@@ -1,8 +1,9 @@
 {
   "name": "ffrwd/mask_tools",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Composition over a grayscale matte, pure SQL over native ffmpeg: mask a filtered copy in, blur or mosaic where the matte is white, spotlight what it keeps, or cut it out over a new background. Model-agnostic - any matte beside any stream.",
   "license": "MIT",
+  "homepage": "https://github.com/imbcmdth/ffrwd-packages",
   "keywords": [
     "mask",
     "matte",
