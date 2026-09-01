@@ -1,27 +1,27 @@
 {
-  "name": "ffrwd/examples",
-  "version": "1.0.4",
-  "description": "The starter shelf, recipes only: a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, and motion thumbnails as mp4 or GIF.",
-  "license": "MIT",
-  "homepage": "https://github.com/imbcmdth/ffrwd-packages",
-  "keywords": [
-    "examples",
-    "recipes",
-    "abr",
-    "dash",
-    "hls",
-    "thumbnail",
-    "poster",
-    "gif"
-  ],
-  "bin": {
-    "abr-ladder": "recipes/abr-ladder.sql",
-    "hls-ladder": "recipes/hls-ladder.sql",
-    "dash-ladder": "recipes/dash-ladder.sql",
-    "to-mp4": "recipes/to-mp4.sql",
-    "poster": "recipes/poster.sql",
-    "contact-sheet": "recipes/contact-sheet.sql",
-    "motion-thumbnail": "recipes/motion-thumbnail.sql",
-    "motion-thumbnail-gif": "recipes/motion-thumbnail-gif.sql"
-  }
+ "name": "ffrwd/examples",
+ "version": "1.1.0",
+ "description": "The starter shelf, recipes only: a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, and motion thumbnails as mp4 or GIF.",
+ "license": "MIT",
+ "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+ "keywords": [
+  "examples",
+  "recipes",
+  "abr",
+  "dash",
+  "hls",
+  "thumbnail",
+  "poster",
+  "gif"
+ ],
+ "bin": {
+  "abr-ladder": "recipes/abr-ladder.sql",
+  "hls-ladder": "recipes/hls-ladder.sql",
+  "dash-ladder": "recipes/dash-ladder.sql",
+  "to-mp4": "recipes/to-mp4.sql",
+  "poster": "recipes/poster.sql",
+  "contact-sheet": "recipes/contact-sheet.sql",
+  "motion-thumbnail": "recipes/motion-thumbnail.sql",
+  "motion-thumbnail-gif": "recipes/motion-thumbnail-gif.sql"
+ }
 }
