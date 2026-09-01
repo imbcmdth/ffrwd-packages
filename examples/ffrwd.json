@@ -16,6 +16,8 @@
   ],
   "bin": {
     "abr-ladder": "recipes/abr-ladder.sql",
+    "hls-ladder": "recipes/hls-ladder.sql",
+    "dash-ladder": "recipes/dash-ladder.sql",
     "to-mp4": "recipes/to-mp4.sql",
     "poster": "recipes/poster.sql",
     "contact-sheet": "recipes/contact-sheet.sql",
