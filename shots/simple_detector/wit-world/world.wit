@@ -1,0 +1,11 @@
+package ffrwd:simple-detector;
+
+/// A windowed filter, no other package in scope: window and stride 1, so a
+/// cut lands on the frame that crossed the threshold, and every frame passes
+/// through with its own row attached. `window-source` is imported, not
+/// wasi:nn or anything else - the host lends the window, this module never
+/// keeps a payload past its own `process` call.
+world simple-detector {
+  import ffrwd:av/window-source@0.14.0;
+  export ffrwd:av/window-filter@0.14.0;
+}

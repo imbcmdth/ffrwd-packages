@@ -11,6 +11,7 @@ at ffrwd.video serves the published versions.
 | `examples/` | the starter shelf, recipes only — a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, motion thumbnails |
 | `mask_tools/` | composition over a grayscale matte, pure SQL over native ffmpeg — blur, mosaic, spotlight or cut out what the matte marks |
 | `depth/` | monocular depth as a matte, hosted in wasm — near bright, far dark, beside the picture for everything that reads a matte |
+| `shots/` | hard-cut detection, hosted in wasm — a `{"shot": n}` row on every frame, stepping at each cut |
 
 Two official packages live in their own repositories for licensing
 reasons: `ffrwd/yolo26` (AGPL-3.0, after its weights) and `ffrwd/moq`

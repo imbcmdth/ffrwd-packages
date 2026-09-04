@@ -24,3 +24,22 @@ jobs:
       - name: Build depth's module
         working-directory: depth
         run: cargo build --target wasm32-wasip2 --release
+
+  build-shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shots
+      - name: Install ffrwd and the wit package
+        run: |
+          pip install ffrwd
+          ffrwd install -g ffrwd/wasm
+      - name: Build shots' module
+        working-directory: shots
+        run: cargo build --target wasm32-wasip2 --release

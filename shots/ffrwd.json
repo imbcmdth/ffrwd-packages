@@ -1,0 +1,22 @@
+{
+  "name": "ffrwd/shots",
+  "version": "0.1.0",
+  "description": "[draft: maintainer to rewrite] Hard-cut detection over a luma grid, hosted in wasm - a `{\"shot\": n}` row on every frame, stepping at each cut.",
+  "license": "MIT",
+  "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+  "dependencies": {
+    "ffrwd/wasm": "0.14.0"
+  },
+  "keywords": [
+    "shots",
+    "cuts",
+    "scene-detection",
+    "chapters"
+  ],
+  "lib": {
+    "simple_detector": "src/simple_detector.sql"
+  },
+  "bin": {
+    "cut-points": "recipes/cut-points.sql"
+  }
+}
