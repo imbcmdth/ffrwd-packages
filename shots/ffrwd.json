@@ -1,7 +1,7 @@
 {
   "name": "ffrwd/shots",
-  "version": "0.1.0",
-  "description": "[draft: maintainer to rewrite] Hard-cut detection over a luma grid, hosted in wasm - a `{\"shot\": n}` row on every frame, stepping at each cut.",
+  "version": "0.1.1",
+  "description": "Hard-cut detection over a luma grid - a `{\"shot\": n}` row on every frame, stepping at each cut.",
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
   "dependencies": {

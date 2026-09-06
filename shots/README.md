@@ -1,4 +1,3 @@
-<!-- draft: maintainer to rewrite -->
 # ffrwd/shots
 
 Hard-cut detection, hosted in wasm. `simple_detector(v)` passes the

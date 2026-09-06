@@ -1,6 +1,6 @@
 {
   "name": "ffrwd/depth",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Monocular depth as a matte using the Depth Anything V2 (small) model.",
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
