@@ -68,7 +68,7 @@ FROM input(:'source') f
 The struct a recognizer returns spreads into `a` and `cues` the way a
 detector's spreads into `boxes_mask`. To mask some spans and not
 others, narrow the rows first with the gather spelling:
-`ARRAY(SELECT c FROM unnest(ffrwd.whisper.transcribe(a).words) c WHERE c.text = 'damn')`.
+`ARRAY(SELECT c FROM unnest(ffrwd.whisper.transcribe(a).words) c WHERE c.text ILIKE '%damn%')` (`ILIKE` needs ffrwd 0.17).
 
 ## Building
 
