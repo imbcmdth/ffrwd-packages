@@ -1,0 +1,10 @@
+package ffrwd:spans-mask;
+
+/// A windowed filter over audio, no other package in scope. It reads the
+/// cues riding on the samples and writes a mask beside them, so
+/// `window-source` is imported and nothing else: the host lends the window,
+/// and the bytes this module keeps are its own copy.
+world spans-mask {
+  import ffrwd:av/window-source@0.15.0;
+  export ffrwd:av/window-filter@0.15.0;
+}

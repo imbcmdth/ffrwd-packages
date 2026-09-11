@@ -9,7 +9,7 @@ at ffrwd.video serves the published versions.
 | package | what it is |
 | --- | --- |
 | `examples/` | the starter shelf, recipes only — a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, motion thumbnails |
-| `mask_tools/` | composition over a grayscale matte, pure SQL over native ffmpeg — blur, mosaic, spotlight or cut out what the matte marks |
+| `mask_tools/` | composition over a matte, video and audio, over native ffmpeg — blur, mosaic, spotlight or cut out what a matte marks; mute or bleep where an audio mask is 1, the mask cut from cue rows by a small wasm module |
 | `depth/` | monocular depth as a matte, hosted in wasm — near bright, far dark, beside the picture for everything that reads a matte |
 | `shots/` | hard-cut detection, hosted in wasm — a `{"shot": n}` row on every frame, stepping at each cut |
 
@@ -27,6 +27,6 @@ ffrwd install -g ffrwd/wasm
 cargo build --target wasm32-wasip2 --release
 ```
 
-run from the package's own directory (today only `depth/` ships a
-module). Publishing is `ffrwd publish` from the package directory,
+run from the package's own directory (`depth/`, `shots/` and `mask_tools/`
+ship modules). Publishing is `ffrwd publish` from the package directory,
 which validates everything first.

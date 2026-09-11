@@ -1,0 +1,9 @@
+package ffrwd:tone;
+
+/// A windowed filter over audio, no other package in scope. It takes a
+/// stream for its shape alone - rate, channels and length - so the window it
+/// borrows is read for nothing but how long it is.
+world tone {
+  import ffrwd:av/window-source@0.15.0;
+  export ffrwd:av/window-filter@0.15.0;
+}

@@ -43,3 +43,22 @@ jobs:
       - name: Build shots' module
         working-directory: shots
         run: cargo build --target wasm32-wasip2 --release
+
+  build-mask-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mask_tools
+      - name: Install ffrwd and the wit package
+        run: |
+          pip install ffrwd
+          ffrwd install -g ffrwd/wasm
+      - name: Build mask_tools' modules
+        working-directory: mask_tools
+        run: cargo build --target wasm32-wasip2 --release

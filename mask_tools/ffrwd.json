@@ -1,9 +1,12 @@
 {
   "name": "ffrwd/mask_tools",
-  "version": "1.0.4",
-  "description": "Composition over a grayscale matte in pure SQL over native ffmpeg: mask a filtered copy in, blur or mosaic out.",
+  "version": "1.1.0",
+  "description": "Composition over a matte, video and audio, over native ffmpeg: blur or mosaic where a matte is white, mute or bleep where a mask is 1. Two small wasm modules turn cue rows into an audio mask and make a tone the length of a track; the rest is SQL.",
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+  "dependencies": {
+    "ffrwd/wasm": "0.15.0"
+  },
   "keywords": [
     "mask",
     "matte",
@@ -12,13 +15,23 @@
     "mosaic",
     "spotlight",
     "cutout",
-    "composite"
+    "composite",
+    "audio",
+    "mute",
+    "bleep",
+    "speech"
   ],
   "lib": {
     "masked": "src/composite.sql",
     "blur_where": "src/composite.sql",
     "mosaic_where": "src/composite.sql",
     "spotlight": "src/composite.sql",
-    "cutout": "src/composite.sql"
+    "cutout": "src/composite.sql",
+    "spans_mask": "src/audio.sql",
+    "fan": "src/audio.sql",
+    "tone": "src/audio.sql",
+    "replace_where": "src/audio.sql",
+    "mute_where": "src/audio.sql",
+    "bleep_where": "src/audio.sql"
   }
 }
