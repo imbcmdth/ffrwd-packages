@@ -20,7 +20,7 @@ jobs:
       - name: Install ffrwd and the wit package
         run: |
           pip install ffrwd
-          ffrwd install -g ffrwd/wasm
+          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("depth/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
       - name: Build depth's module
         working-directory: depth
         run: cargo build --target wasm32-wasip2 --release
@@ -39,7 +39,7 @@ jobs:
       - name: Install ffrwd and the wit package
         run: |
           pip install ffrwd
-          ffrwd install -g ffrwd/wasm
+          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("shots/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
       - name: Build shots' module
         working-directory: shots
         run: cargo build --target wasm32-wasip2 --release
@@ -58,7 +58,10 @@ jobs:
       - name: Install ffrwd and the wit package
         run: |
           pip install ffrwd
-          ffrwd install -g ffrwd/wasm
+          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("mask_tools/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
       - name: Build mask_tools' modules
         working-directory: mask_tools
         run: cargo build --target wasm32-wasip2 --release
+      - name: Unit tests
+        working-directory: mask_tools
+        run: cargo test --release

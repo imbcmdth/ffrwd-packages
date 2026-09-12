@@ -1,0 +1,12 @@
+[package]
+name = "composite"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# No wasm here and nothing for the manifest to name: this crate exists for the
+# check in tests/, and the library is only the arithmetic that check measures
+# with. It has no dependencies so that `cargo test` in this package needs
+# nothing fetched beyond what the two wasm crates already want.
+[lib]
+name = "composite"

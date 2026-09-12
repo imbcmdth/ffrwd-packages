@@ -15,7 +15,7 @@ a voice detector, a transcriber, a hand-written cue list.
 
 Video:
 
-- `masked(v, matte, filtered)` - the one `maskedmerge` - reused by the rest. `v` where the matte is black, `filtered` where it is white.
+- `masked(v, matte, filtered)` - the one merge - reused by the rest. `v` where the matte is black, `filtered` where it is white. The matte rides in as an alpha channel, so white replaces the picture outright and a `feather` edge ramps between the two.
 - `blur_where(v, matte, sigma DEFAULT 12)` - blurs.
 - `mosaic_where(v, matte, size DEFAULT 16)` - pixelates.
 - `spotlight(v, matte, dim DEFAULT 0.6)` - darkens everything but the matte.
@@ -38,8 +38,8 @@ detector's about a second after, a transcriber's at the end of its
 30-second window, and in both cases only once the span has ended. So
 the mask holds audio back for `lag` seconds and writes each stretch at
 its original time once that much later audio has been seen, or at the
-end of the stream. The merge downstream waits, as `maskedmerge` waits
-on a slow detector. `lag` has to exceed the longest span, not the
+end of the stream. The merge downstream waits, as the video
+merge waits on a slow detector. `lag` has to exceed the longest span, not the
 recognizer's delay: a span still open when the held audio is written
 is written unmasked. The default holds 32 seconds, 12 MB of 48 kHz
 stereo; raise it for long uninterrupted speech.

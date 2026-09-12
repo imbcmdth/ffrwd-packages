@@ -2,7 +2,14 @@
 # The wasm modules this package ships. They build into
 # target/wasm32-wasip2/release/, which is where the package's lib SQL names
 # them.
+#
+# `composite` hosts no module and the manifest names nothing in it: it is the
+# exec-tier check on what `src/composite.sql` does to a picture, which needs a
+# real ffmpeg and so cannot live in either module's unit tests. It is a
+# workspace member, and therefore shipped, because the workspace has to build
+# wherever the package is installed.
 members = [
+    "composite",
     "spans-mask",
     "tone",
 ]
