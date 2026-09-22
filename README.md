@@ -8,6 +8,7 @@ at ffrwd.video serves the published versions.
 
 | package | what it is |
 | --- | --- |
+| `core/` | the functions the starter recipes are made of: a rendition ladder whose rungs are arguments, the audio renditions beside it, a width-only scale, the two-pass GIF palette |
 | `examples/` | the starter shelf, recipes only — a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, motion thumbnails |
 | `mask_tools/` | composition over a matte, video and audio, over native ffmpeg — blur, mosaic, spotlight or cut out what a matte marks; mute or bleep where an audio mask is 1, the mask cut from cue rows by a small wasm module |
 | `depth/` | monocular depth as a matte, hosted in wasm — near bright, far dark, beside the picture for everything that reads a matte |

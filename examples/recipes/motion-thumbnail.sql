@@ -3,7 +3,8 @@
 -- example: ffrwd compile -f packages/ffrwd/examples/recipes/motion-thumbnail.sql -v source=film.mp4 -v count=5 -v dest=preview.mp4
 COPY (
   WITH shots AS (
-    SELECT fps(scale(f.video, COALESCE(:width, 480), -2), COALESCE(:fps, 12)) AS frame
+    SELECT fps(ffrwd.core.to_width(f.video, COALESCE(:width, 480)),
+               COALESCE(:fps, 12)) AS frame
     FROM input(:'source') f, generate_series(1, :count) i
     WHERE f.t >= f.duration * (i.i - 0.5) / :count - COALESCE(:clip, 2) / 2.0
       AND f.t <= f.duration * (i.i - 0.5) / :count + COALESCE(:clip, 2) / 2.0

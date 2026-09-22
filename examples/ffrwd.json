@@ -1,9 +1,12 @@
 {
  "name": "ffrwd/examples",
- "version": "1.1.0",
- "description": "The starter shelf, recipes only: a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, and motion thumbnails as mp4 or GIF.",
+ "version": "2.0.0",
+ "description": "The starter shelf, recipes only: a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, and motion thumbnails as mp4 or GIF. Written over ffrwd/core.",
  "license": "MIT",
  "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+ "dependencies": {
+  "ffrwd/core": "0.1.0"
+ },
  "keywords": [
   "examples",
   "recipes",
