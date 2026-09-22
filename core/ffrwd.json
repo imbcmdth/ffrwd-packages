@@ -1,0 +1,26 @@
+{
+  "name": "ffrwd/core",
+  "version": "0.1.0",
+  "description": "The functions the starter recipes are made of: a rendition ladder whose rungs are arguments, the audio renditions that sit beside it, a width-only scale, and the two-pass GIF palette. SQL over stock ffmpeg, no modules, no models, no presets.",
+  "license": "MIT",
+  "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+  "keywords": [
+    "core",
+    "ladder",
+    "abr",
+    "hls",
+    "dash",
+    "rendition",
+    "scale",
+    "palette",
+    "gif"
+  ],
+  "lib": {
+    "to_width": "src/size.sql",
+    "ladder": "src/ladder.sql",
+    "ladder_of": "src/ladder.sql",
+    "audio_renditions": "src/ladder.sql",
+    "palette_gif": "src/gif.sql"
+  },
+  "test": "bash tests/run.sh"
+}
