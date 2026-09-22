@@ -1,0 +1,16 @@
+{
+  "format_version": 3,
+  "reproducible": true,
+  "dependencies": {
+    "ffrwd/core": "0.1.0"
+  },
+  "packages": [
+    {
+      "kind": "registry",
+      "name": "ffrwd/core",
+      "version": "0.1.0",
+      "sha256": "614f709b783acffd7340ac88f44b63328086c295a17bfcb73e4ddf52a67e9298",
+      "store": "v1/61/614f709b783acffd7340ac88f44b63328086c295a17bfcb73e4ddf52a67e9298"
+    }
+  ]
+}
