@@ -47,11 +47,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: mask_tools
-      - name: Install ffrwd and spans_mask's wit
-        working-directory: mask_tools
-        run: |
-          pip install ffrwd
-          ffrwd install
       - name: Build mask_tools' modules
         working-directory: mask_tools
         run: cargo build --target wasm32-wasip2 --release

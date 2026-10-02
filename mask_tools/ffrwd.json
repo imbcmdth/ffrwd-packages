@@ -5,7 +5,7 @@
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
   "dependencies": {
-    "ffrwd/wasm": "0.15.0"
+    "ffrwd/wasm": "0.19.0"
   },
   "keywords": [
     "mask",
@@ -29,7 +29,6 @@
     "spotlight": "src/composite.sql",
     "cutout": "src/composite.sql",
     "spans_mask": "src/audio.sql",
-    "fan": "src/audio.sql",
     "tone": "src/audio.sql",
     "replace_where": "src/audio.sql",
     "mute_where": "src/audio.sql",

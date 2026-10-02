@@ -27,10 +27,8 @@ ship modules):
 cargo build --target wasm32-wasip2 --release
 ```
 
-`depth`, `simple_detector` and `tone` are nodes written with
-`ffrwd-node`, which carries the world they are built against, and the
-three packages holding them need ffrwd 0.29. `mask_tools`' `spans_mask`
-still reads its wit from the `ffrwd/wasm` version the manifest pins, so
-`ffrwd install` runs in `mask_tools/` before its build. Publishing is
+`depth`, `simple_detector`, `spans_mask` and `tone` are nodes written
+with `ffrwd-node`, which carries the world they are built against, and
+the three packages holding them need ffrwd 0.29. Publishing is
 `ffrwd publish` from the package directory, which validates everything
 first.

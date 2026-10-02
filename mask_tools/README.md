@@ -25,61 +25,45 @@ Video:
 
 Audio:
 
-- `spans_mask(a, cues, grow DEFAULT 0, feather DEFAULT 0, lag DEFAULT 32)` - the rows rasterized into a mask, the twin of a box list's matte: 1 inside each cue's span, 0 outside. `grow` pads each span by that many milliseconds; `feather` ramps the edges over that many. Overlapping spans union. A wasm module, reading the rows that ride its input.
-- `fan(mask, channels)` - the mask in that many identical channels, at unity: what a mask cut from a mono recognizer needs before it meets a stereo or 5.1 track.
+- `spans_mask(a, cues, grow DEFAULT 0, feather DEFAULT 0)` - the rows rasterized into a mask, the twin of a box list's matte: 1 inside each cue's span, 0 outside, at `a`'s rate and channel count. `cues` are any rows carrying `start_t` and `end_t`. `grow` pads each span by that many milliseconds; `feather` ramps the edges over that many. Overlapping spans union. A wasm module, `a`'s samples never read.
 - `replace_where(a, mask, other)` - the one merge - reused by the rest. `a` where the mask is 0, `other` where it is 1: `a + mask * (other - a)`, over `amultiply` and `amix`.
 - `mute_where(a, mask)` - silence.
 - `bleep_where(a, mask, frequency DEFAULT 1000, level DEFAULT 0.3)` - a tone.
 - `tone(a, frequency DEFAULT 1000, level DEFAULT 0.3)` - a sine the length of `a`, at its rate and channels in f32, `a`'s samples never read. A wasm module, because a generated source has no length to inherit.
 
-## Two things about the mask
+## Where the cues come from
 
-**It runs late.** A recognizer's row arrives with the window the span
-closed on, after the audio it describes has passed through: a voice
-detector's about a second after, a transcriber's at the end of its
-30-second window, and in both cases only once the span has ended. So
-the mask holds audio back for `lag` seconds and writes each stretch at
-its original time once that much later audio has been seen, or at the
-end of the stream. The merge downstream waits, as the video
-merge waits on a slow detector. `lag` has to exceed the longest span, not the
-recognizer's delay: a span still open when the held audio is written
-is written unmasked. The default holds 32 seconds, 12 MB of 48 kHz
-stereo; raise it for long uninterrupted speech.
+A mask is cut from the rows a recognizer writes. Each cue reaches the
+mask by its time, however late the recognizer writes it: the host holds
+the audio until the recognizer has gone past it, a transcriber's 30 s
+window for words, and the merge downstream waits with it as the video
+merge waits on a slow detector. `grow` and `feather` reach before a
+cue's start, and the cues are fetched that far ahead, so the ramp starts
+on time.
 
-**It carries the recognizer's layout.** A detector conforms its input
-to its own format - vad's is 16 kHz mono - and a module's output has
-the format its instance was opened with, so the mask cut from it is
-16 kHz mono. Left to ffmpeg, a mono mask meeting a stereo track is
-upmixed at 0.707, 3 dB down outside the spans, and meeting a 5.1
-track lands in the centre channel alone, five channels wiped. So
-`fan` the mask to the track's own count first. The rate difference
-resamples, and a resampled 1 is 1 to within a part in a hundred
-thousand: `mute_where` on such a mask is digital silence inside the
-spans and the original to within -100 dB outside, and
-`bleep_where` the reverse. A mask cut at the track's own rate is
-exact both ways.
+The mask is the track's own rate and layout, so `mute_where` is digital
+silence inside the spans and the track's own samples everywhere else,
+and `bleep_where` the same the other way round.
+
+To mask some cues and not others, narrow the rows first with a gather:
 
 ```sql
-SELECT ffrwd.mask_tools.mute_where(
-         f.audio[1],
-         ffrwd.mask_tools.fan(ffrwd.mask_tools.spans_mask(ffrwd.vad.speech(f.audio[1]), 100, 50), 2)),
-       f.video
-FROM input(:'source') f
+SELECT ffrwd.mask_tools.mute_where(a,
+         ffrwd.mask_tools.spans_mask(a,
+           ARRAY(SELECT c FROM unnest(
+                   ffrwd.whisper.transcribe_words(a, speech => ffrwd.vad.speech(a), strip => true)) c
+                 WHERE c.text ILIKE ANY (ARRAY['damn', 'hell'])),
+           grow => 100, feather => 20)),
+       f.video[1]
+FROM input(:'source') f, unnest(f.audio) a
+WHERE a.index = 1
 ```
-
-The struct a recognizer returns spreads into `a` and `cues` the way a
-detector's spreads into `boxes_mask`. To mask some spans and not
-others, narrow the rows first with the gather spelling:
-`ARRAY(SELECT c FROM unnest(ffrwd.whisper.transcribe(a).words) c WHERE c.text ILIKE '%damn%')` (`ILIKE` needs ffrwd 0.17).
 
 ## Building
 
-`spans_mask` builds against the wit of the `ffrwd/wasm` version the
-manifest names, which its `build.rs` asks `ffrwd path` for, so the
-package is installed here first. `tone` is a node written with
-`ffrwd-node`, which carries its own world.
+Both modules are nodes written with `ffrwd-node`, which carries its own
+world.
 
 ```
-ffrwd install
 cargo build --target wasm32-wasip2 --release
 ```
