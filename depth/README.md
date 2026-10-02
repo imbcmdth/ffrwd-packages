@@ -27,7 +27,9 @@ verifies them. The graph is the fp32 ONNX export, about 95 MB.
 ## Recipes
 
 - `bokeh` - blur the far field, keep the near sharp.
-- `depth-map` - the matte itself, written to a file.
+- `depth-map` - the matte itself, written to a file. The matte is
+  gray, which libx264 would code as 4:0:0; `pix_fmt 'yuv420p'` writes
+  it as 4:2:0 instead, which every player opens.
 - `near-spotlight` - dim everything but the near field.
 
 ```
