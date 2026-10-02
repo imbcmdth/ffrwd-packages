@@ -3,6 +3,8 @@
 Monocular depth as a matte. `depth(v)` returns the
 scene's depth as a grayscale video stream - near bright, far dark. Ready for everything that reads a matte!
 
+Requires ffrwd 0.29.
+
 There is no invert option. ffmpeg's own `negate` filter is the
 inversion: `negate(ffrwd.depth.depth(v))` is far-bright.
 
@@ -18,8 +20,9 @@ verifies them. The graph is the fp32 ONNX export, about 95 MB.
 
 ## Export
 
-- `depth(v)` returns the depth matte as a `video_stream`, same
-  geometry and pixel format as `v`.
+- `depth(v)` returns the depth matte as a `video_stream`: the size of
+  `v`, in `gray`, one byte a pixel from 0 (far) to 255 (near). A yuv420p
+  `v` is read in the range and matrix it declares.
 
 ## Recipes
 

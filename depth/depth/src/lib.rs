@@ -1,32 +1,27 @@
-//! Monocular depth: every frame leaves as a greyscale map of how far away it
-//! is, near bright and far dark.
+//! Monocular depth: every frame leaves as a gray map of how far away it is,
+//! near bright and far dark, the size of the frame it was made from.
 //!
 //! The graph is Depth Anything V2 (small), run through `wasi:nn`. The module
 //! never opens a file - the host binds the graph to a name with
 //! `-nn depth=<path>` and this module asks for that name and nothing else.
 //!
-//! One frame in, one out, at the same geometry and in the same pixel format,
-//! so the map can be fed straight back into a module that reads the frame
-//! beside it. Between the two the frame is letterboxed into the square the
-//! graph takes, normalized the way the model was trained, run, min-max
-//! normalized over the frame's own range, and sampled back out to the frame's
-//! own size.
+//! Frames arrive as rgba, or as yuv420p converted here by ffrwd-frame in the
+//! range and matrix the stream declares. Each one is letterboxed into the
+//! square the graph takes, normalized the way the model was trained, run,
+//! min-max normalized over the frame's own range, and sampled back out to the
+//! frame's own size as one byte a pixel.
 
-// `generate_all`: the world's interfaces come from two other packages -
-// ffrwd:av and wasi:nn - and without it bindgen expects them to have been
-// generated somewhere else.
+// `generate_all`: the world's interfaces are wasi:nn's, a package of its own,
+// and without it bindgen expects them to have been generated somewhere else.
 wit_bindgen::generate!({
-    path: ["wit", "wit-world"],
-    // Fully qualified: three packages are in scope, and each has worlds.
+    path: "wit-world",
     world: "ffrwd:depth/depth",
     generate_all,
 });
 
-use std::cell::RefCell;
-
-use exports::ffrwd::av::window_filter::{
-    Format, FramePayload, Guest, InFrame, Meta, OutFrame, Processed, StreamInfo, WindowMeta,
-};
+use ffrwd_frame::yuv::{self, Colour, Yuv420p};
+use ffrwd_frame::Rgba;
+use ffrwd_node::{Bound, Init, Input, NoParams, Node, Out, Output, Result, Shape, Tick};
 use wasi::nn::graph::{load_by_name, Graph};
 use wasi::nn::inference::GraphExecutionContext;
 use wasi::nn::tensor::{Tensor, TensorType};
@@ -47,13 +42,10 @@ const OUTPUT_NAME: &str = "predicted_depth";
 const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const STD: [f32; 3] = [0.229, 0.224, 0.225];
 
-const PARAMS_SCHEMA: &str = r#"{"type":"object","properties":{},"additionalProperties":false}"#;
-
-/// The pixel format the host chose at `init`, fixed for the instance's life.
-#[derive(Clone, Copy, PartialEq)]
-enum PixFmt {
-    Yuv420p,
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Arrives {
     Rgba,
+    Yuv420p(Colour),
 }
 
 /// Where the frame sits inside the square the graph is run at, once it has
@@ -93,11 +85,7 @@ impl Letterbox {
     }
 }
 
-/// What `init` settled, plus the graph it loaded.
-struct Opened {
-    width: usize,
-    height: usize,
-    pix_fmt: PixFmt,
+struct Model {
     letterbox: Letterbox,
     /// Held for the life of the instance: building it once is what keeps a
     /// provider's kernels from being chosen again per frame.
@@ -106,17 +94,13 @@ struct Opened {
     _graph: Graph,
 }
 
-thread_local! {
-    static OPENED: RefCell<Option<Opened>> = const { RefCell::new(None) };
-}
-
-struct Depth;
-
-fn validate_params(params: &str) -> Result<(), String> {
-    match params.trim() {
-        "" | "{}" => Ok(()),
-        other => Err(format!("depth takes no params, got: {other}")),
-    }
+struct Depth {
+    v: u32,
+    width: usize,
+    height: usize,
+    arrives: Arrives,
+    rgba: Vec<u8>,
+    model: Model,
 }
 
 /// The spec's spelling of an error code, so a message says what actually
@@ -135,6 +119,31 @@ fn failed(what: &str, error: &wasi::nn::errors::Error) -> String {
         ErrorCode::Unknown => "unknown",
     };
     format!("depth: {what}: {code} ({})", error.data())
+}
+
+fn colour(color: Option<&ffrwd_node::ColorInfo>) -> Result<Colour, String> {
+    Colour::of(color.map(|color| yuv::ColorInfo {
+        range: &color.range,
+        primaries: &color.primaries,
+        trc: &color.trc,
+        space: &color.space,
+    }))
+}
+
+fn as_rgba<'a>(
+    arrives: Arrives,
+    bytes: &'a [u8],
+    scratch: &'a mut [u8],
+    width: usize,
+    height: usize,
+) -> Result<Rgba<'a>, String> {
+    match arrives {
+        Arrives::Rgba => Rgba::new(bytes, width, height),
+        Arrives::Yuv420p(colour) => {
+            yuv::to_rgba(&Yuv420p::new(bytes, width, height)?, colour, scratch)?;
+            Rgba::new(scratch, width, height)
+        }
+    }
 }
 
 /// Where one square pixel reads from along an axis: the two frame samples it
@@ -165,47 +174,19 @@ fn taps(count: usize, source: usize, scale: f32) -> Taps {
 
 /// One frame row as red, green and blue, a channel at a time so each is
 /// contiguous.
-fn row_to_rgb(
-    frame: &[u8],
-    pix_fmt: PixFmt,
-    width: usize,
-    height: usize,
-    y: usize,
-    out: &mut [f32],
-) {
+fn row_to_rgb(frame: &Rgba, y: usize, out: &mut [f32]) {
+    let width = frame.width;
     let (red, rest) = out.split_at_mut(width);
     let (green, blue) = rest.split_at_mut(width);
-    match pix_fmt {
-        PixFmt::Rgba => {
-            for (x, pixel) in frame[y * width * 4..(y + 1) * width * 4]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .enumerate()
-            {
-                red[x] = f32::from(pixel[0]);
-                green[x] = f32::from(pixel[1]);
-                blue[x] = f32::from(pixel[2]);
-            }
-        }
-        PixFmt::Yuv420p => {
-            let pixels = width * height;
-            let (cw, ch) = (width.div_ceil(2), height.div_ceil(2));
-            let chroma = cw * ch;
-            let luma = &frame[y * width..(y + 1) * width];
-            let crow = (y / 2).min(ch - 1) * cw;
-            for x in 0..width {
-                let l = f32::from(luma[x]);
-                let ci = crow + (x / 2).min(cw - 1);
-                let u = f32::from(frame[pixels + ci]) - 128.0;
-                let v = f32::from(frame[pixels + chroma + ci]) - 128.0;
-                // The usual BT.601 inverse, in full range: the frames a module
-                // is handed are what the host decoded, not studio-swing video.
-                red[x] = l + 1.402 * v;
-                green[x] = l - 0.344_136 * u - 0.714_136 * v;
-                blue[x] = l + 1.772 * u;
-            }
-        }
+    for (x, pixel) in frame.data[y * width * 4..(y + 1) * width * 4]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        red[x] = f32::from(pixel[0]);
+        green[x] = f32::from(pixel[1]);
+        blue[x] = f32::from(pixel[2]);
     }
 }
 
@@ -231,13 +212,8 @@ fn resize_row(rgb: &[f32], columns: &Taps, width: usize, out: &mut [f32]) {
 /// columns once and the two square rows that read it mix the same numbers.
 /// Slots go by parity, and a square row mixes frame rows `y` and `y + 1`,
 /// which never share one.
-fn to_input(
-    frame: &[u8],
-    pix_fmt: PixFmt,
-    width: usize,
-    height: usize,
-    box_: Letterbox,
-) -> Vec<u8> {
+fn to_input(frame: &Rgba, box_: Letterbox) -> Vec<u8> {
+    let (width, height) = (frame.width, frame.height);
     let plane = SIDE * SIDE;
     // Black, standardized, is where the padding sits.
     let mut planes = vec![0f32; plane * 3];
@@ -256,7 +232,7 @@ fn to_input(
         for y in [rows.low[sy], rows.high[sy]] {
             let slot = y % 2;
             if held[slot] != Some(y) {
-                row_to_rgb(frame, pix_fmt, width, height, y, &mut rgb);
+                row_to_rgb(frame, y, &mut rgb);
                 resize_row(&rgb, &columns, width, &mut resized[slot]);
                 held[slot] = Some(y);
             }
@@ -371,102 +347,61 @@ fn to_grey(
     out
 }
 
-/// A greyscale map written as a frame of the instance's own format: the luma
-/// plane with neutral chroma, or the same value in red, green and blue.
-fn to_frame(grey: &[u8], pix_fmt: PixFmt, width: usize, height: usize, len: usize) -> Vec<u8> {
-    let mut out = vec![0u8; len];
-    match pix_fmt {
-        PixFmt::Yuv420p => {
-            out[..width * height].copy_from_slice(grey);
-            // 128 in both chroma planes is no colour at all.
-            out[width * height..].fill(128);
-        }
-        PixFmt::Rgba => {
-            for (index, value) in grey.iter().enumerate() {
-                let base = index * 4;
-                out[base] = *value;
-                out[base + 1] = *value;
-                out[base + 2] = *value;
-                out[base + 3] = 255;
-            }
-        }
+impl Model {
+    /// One frame through the graph.
+    fn run(&self, frame: &Rgba) -> Result<Vec<u8>, String> {
+        let input = to_input(frame, self.letterbox);
+        let tensor = Tensor::new(&[1, 3, SIDE as u32, SIDE as u32], TensorType::Fp32, &input);
+        let outputs = self
+            .context
+            .compute(vec![(INPUT_NAME.to_string(), tensor)])
+            .map_err(|e| failed("compute", &e))?;
+
+        let out = outputs
+            .into_iter()
+            .find(|(name, _)| name == OUTPUT_NAME)
+            .map(|(_, tensor)| tensor)
+            .ok_or_else(|| format!("depth: the graph returned no tensor named {OUTPUT_NAME}"))?;
+        let (grid, grid_h, grid_w) = depth_grid(&out.dimensions(), &out.data())?;
+        Ok(to_grey(
+            &grid,
+            grid_w,
+            grid_h,
+            frame.width,
+            frame.height,
+            self.letterbox,
+        ))
     }
-    out
 }
 
-/// One frame through the graph.
-fn run(opened: &Opened, frame: &[u8], len: usize) -> Result<Vec<u8>, String> {
-    let input = to_input(
-        frame,
-        opened.pix_fmt,
-        opened.width,
-        opened.height,
-        opened.letterbox,
-    );
-    let tensor = Tensor::new(&[1, 3, SIDE as u32, SIDE as u32], TensorType::Fp32, &input);
-    let outputs = opened
-        .context
-        .compute(vec![(INPUT_NAME.to_string(), tensor)])
-        .map_err(|e| failed("compute", &e))?;
+impl Node for Depth {
+    const NAME: &'static str = "depth";
+    const VERSION: &'static str = "0.2.0";
+    type Params = NoParams;
 
-    let out = outputs
-        .into_iter()
-        .find(|(name, _)| name == OUTPUT_NAME)
-        .map(|(_, tensor)| tensor)
-        .ok_or_else(|| format!("depth: the graph returned no tensor named {OUTPUT_NAME}"))?;
-    let (grid, grid_h, grid_w) = depth_grid(&out.dimensions(), &out.data())?;
-    let grey = to_grey(
-        &grid,
-        grid_w,
-        grid_h,
-        opened.width,
-        opened.height,
-        opened.letterbox,
-    );
-    Ok(to_frame(
-        &grey,
-        opened.pix_fmt,
-        opened.width,
-        opened.height,
-        len,
-    ))
-}
-
-impl Guest for Depth {
-    fn describe() -> WindowMeta {
-        WindowMeta {
-            meta: Meta {
-                name: "depth".to_string(),
-                version: "0.1.0".to_string(),
-                params_schema: PARAMS_SCHEMA.to_string(),
-                rows_schema: String::new(),
-                pixel_formats: vec!["yuv420p".to_string(), "rgba".to_string()],
-                sample_formats: vec![],
-                sample_rates: vec![],
-                channel_counts: vec![],
-                rows_language: vec![],
-            },
-            window: 1,
-            stride: 1,
-            pure: true,
-            one_to_one: true,
-            reads_rows: false,
-            forwards_rows: true,
-            // One stream in: the frame it measures.
-            inputs: 1,
-        }
+    fn shape(_: &NoParams, _: &Bound) -> Result<Shape> {
+        Ok(Shape::new()
+            .input(
+                Input::video("v")
+                    .clock()
+                    .pixel_formats(&["yuv420p", "rgba"]),
+            )
+            .output(Output::like("v").pixel_format("gray"))
+            .pure()
+            .one_to_one())
     }
 
-    fn init(format: Format, _stream_info: StreamInfo, params: String) -> Result<(), String> {
-        let Format::Video(video) = format else {
-            return Err("depth reads frames, and this stream is audio".to_string());
+    fn init(_: NoParams, init: &Init) -> Result<Depth> {
+        let v = init.stream("v")?;
+        let video = v
+            .video_format()
+            .ok_or("depth reads frames, and `v` is not video")?;
+        let (width, height) = (video.width as usize, video.height as usize);
+        let arrives = match video.pix_fmt.as_str() {
+            "rgba" => Arrives::Rgba,
+            "yuv420p" => Arrives::Yuv420p(colour(video.color.as_ref())?),
+            other => return Err(format!("depth does not accept pixel format {other}").into()),
         };
-        let pix_fmt = match video.pix_fmt.as_str() {
-            "yuv420p" => PixFmt::Yuv420p,
-            "rgba" => PixFmt::Rgba,
-            other => return Err(format!("depth does not accept pixel format {other}")),
-        };
-        validate_params(&params)?;
 
         // The graph is loaded once per instance, and the session built once:
         // the first frame is what a provider picks its kernels on, and every
@@ -477,61 +412,136 @@ impl Guest for Depth {
             .init_execution_context()
             .map_err(|e| failed("init-execution-context", &e))?;
 
-        OPENED.with(|o| {
-            *o.borrow_mut() = Some(Opened {
-                width: video.width as usize,
-                height: video.height as usize,
-                pix_fmt,
-                letterbox: Letterbox::new(video.width as usize, video.height as usize),
+        Ok(Depth {
+            v: v.id,
+            width,
+            height,
+            arrives,
+            rgba: match arrives {
+                Arrives::Rgba => Vec::new(),
+                Arrives::Yuv420p(_) => vec![0; width * height * 4],
+            },
+            model: Model {
+                letterbox: Letterbox::new(width, height),
                 context,
                 _graph: graph,
-            });
-        });
-        Ok(())
+            },
+        })
     }
 
-    fn set_params(params: String) -> Result<(), String> {
-        validate_params(&params)
-    }
-
-    fn process(frames: Vec<InFrame>, _trailing: Vec<String>, _last: bool) -> Processed {
-        // The final call carries nothing: window and stride are 1, so no frame
-        // is ever left over.
-        let mut out = Vec::with_capacity(frames.len());
-        OPENED.with(|opened| {
-            let borrowed = opened.borrow();
-            let opened = borrowed
-                .as_ref()
-                .expect("init loads the graph before any frame arrives");
-            for frame in &frames {
-                match run(opened, &frame.frame, frame.frame.len()) {
-                    Ok(map) => out.push(OutFrame {
-                        pts: frame.pts,
-                        frame: FramePayload::New(map),
-                        rows: frame.rows.clone(),
-                    }),
-                    // `process` has no way to say no, so a graph that failed
-                    // mid-stream stops the run rather than passing a frame off
-                    // as a depth map.
-                    Err(message) => panic!("{message}"),
-                }
-            }
-        });
-        Processed {
-            frames: out,
-            trailing: vec![],
+    fn process(&mut self, tick: &Tick, out: &mut Out) -> Result<()> {
+        for frame in tick.frames(self.v) {
+            let bytes = tick.fetch(self.v, frame.index);
+            let picture = as_rgba(
+                self.arrives,
+                &bytes,
+                &mut self.rgba,
+                self.width,
+                self.height,
+            )?;
+            let map = self.model.run(&picture)?;
+            out.frame("v", frame.pts, frame.duration, map)?;
         }
+        Ok(())
     }
 }
 
-export!(Depth);
+ffrwd_node::export!(Depth);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ffrwd_node::{Format, Runner};
 
     fn read_f32(bytes: &[u8], index: usize) -> f32 {
         f32::from_le_bytes(bytes[index * 4..index * 4 + 4].try_into().expect("4 bytes"))
+    }
+
+    fn color(range: &str, space: &str) -> ffrwd_node::ColorInfo {
+        ffrwd_node::ColorInfo {
+            range: range.to_owned(),
+            primaries: "unknown".to_owned(),
+            trc: "unknown".to_owned(),
+            space: space.to_owned(),
+        }
+    }
+
+    fn flat_yuv(width: usize, height: usize, luma: u8) -> Vec<u8> {
+        let mut frame = vec![128u8; Yuv420p::size(width, height)];
+        frame[..width * height].fill(luma);
+        frame
+    }
+
+    #[test]
+    fn the_map_is_the_picture_in_gray() {
+        let shape = Runner::<Depth>::shape("", &["v".to_owned()]).expect("a shape");
+        assert_eq!(shape.clock_input(), Some("v"));
+        assert_eq!(
+            shape.inputs[0].accepts.pixel_formats,
+            ["yuv420p", "rgba"],
+            "yuv420p first, the smaller on the wire"
+        );
+        assert_eq!(shape.outputs.len(), 1);
+        let map = &shape.outputs[0];
+        assert_eq!(map.name, "v");
+        assert_eq!(map.format, None::<Format>);
+        let like = map.like.as_ref().expect("follows its input");
+        assert_eq!(
+            (like.port.as_deref(), like.pixel_format.as_deref()),
+            (Some("v"), Some("gray"))
+        );
+        assert!(shape.pure && shape.one_to_one);
+    }
+
+    #[test]
+    fn a_tv_range_picture_reaches_the_model_at_full_contrast() {
+        // Black is 16 and white 235 on the wire. Read as full range, as this
+        // module once did, they stayed 16 and 235; read as the stream's own
+        // range they are 0 and 255.
+        let tv = Arrives::Yuv420p(colour(Some(&color("tv", "bt470bg"))).expect("tv 601"));
+        let untagged = Arrives::Yuv420p(colour(None).expect("unknown is tv 601"));
+        assert_eq!(
+            tv, untagged,
+            "an untagged stream is read as swscale reads it"
+        );
+        for (luma, grey) in [(16u8, 0u8), (235, 255), (126, 128)] {
+            let bytes = flat_yuv(4, 2, luma);
+            let mut scratch = vec![0u8; 4 * 2 * 4];
+            let picture = as_rgba(tv, &bytes, &mut scratch, 4, 2).expect("converts");
+            assert!(
+                picture
+                    .data
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|p| *p == [grey, grey, grey, 255]),
+                "luma {luma} is grey {grey}: {:?}",
+                &picture.data[..4]
+            );
+        }
+    }
+
+    #[test]
+    fn a_full_range_picture_is_read_as_full_range() {
+        let pc = Arrives::Yuv420p(colour(Some(&color("pc", "bt709"))).expect("pc 709"));
+        let bytes = flat_yuv(2, 2, 235);
+        let mut scratch = vec![0u8; 2 * 2 * 4];
+        let picture = as_rgba(pc, &bytes, &mut scratch, 2, 2).expect("converts");
+        assert_eq!(&picture.data[..4], [235, 235, 235, 255]);
+    }
+
+    #[test]
+    fn a_matrix_ffrwd_frame_does_not_convert_is_refused_at_init() {
+        let err = colour(Some(&color("tv", "ycgco"))).expect_err("not converted here");
+        assert!(err.contains("rgba"), "{err}");
+    }
+
+    #[test]
+    fn an_rgba_picture_is_taken_as_it_is() {
+        let bytes: Vec<u8> = [9u8, 8, 7, 255].repeat(4);
+        let picture = as_rgba(Arrives::Rgba, &bytes, &mut [], 2, 2).expect("rgba");
+        assert_eq!(picture.data, &bytes[..]);
+        assert!(as_rgba(Arrives::Rgba, &bytes[..12], &mut [], 2, 2).is_err());
     }
 
     #[test]
@@ -556,7 +566,8 @@ mod tests {
         // A 2x2 rgba frame of one colour: every tensor sample in a channel is
         // that channel's value rescaled to 0..1 and standardized.
         let frame: Vec<u8> = [128u8, 64, 32, 255].repeat(4);
-        let bytes = to_input(&frame, PixFmt::Rgba, 2, 2, Letterbox::new(2, 2));
+        let rgba = Rgba::new(&frame, 2, 2).expect("2x2");
+        let bytes = to_input(&rgba, Letterbox::new(2, 2));
         let plane = SIDE * SIDE;
         assert_eq!(bytes.len(), plane * 3 * 4);
         for (channel, value) in [128.0f32, 64.0, 32.0].iter().enumerate() {
@@ -577,10 +588,13 @@ mod tests {
         // through the same standardization the pixels get.
         let frame: Vec<u8> = [200u8, 200, 200, 255].repeat(4 * 2);
         let box_ = Letterbox::new(4, 2);
-        let bytes = to_input(&frame, PixFmt::Rgba, 4, 2, box_);
+        let bytes = to_input(&Rgba::new(&frame, 4, 2).expect("4x2"), box_);
         let pad = (0.0 - MEAN[0]) / STD[0];
         let bar = read_f32(&bytes, 0);
-        assert!((bar - pad).abs() < 1e-6, "the top bar is standardized black");
+        assert!(
+            (bar - pad).abs() < 1e-6,
+            "the top bar is standardized black"
+        );
         let inside = read_f32(&bytes, box_.offset_y as usize * SIDE + SIDE / 2);
         let expected = (200.0 / 255.0 - MEAN[0]) / STD[0];
         assert!(
@@ -621,31 +635,8 @@ mod tests {
             }
         }
         let grey = to_grey(&grid, SIDE, SIDE, 64, 64, Letterbox::new(64, 64));
+        assert_eq!(grey.len(), 64 * 64, "one byte a pixel");
         assert_eq!(*grey.iter().min().expect("pixels"), 0);
         assert_eq!(*grey.iter().max().expect("pixels"), 255);
-    }
-
-    #[test]
-    fn a_grey_map_writes_neutral_chroma_and_opaque_alpha() {
-        let grey = vec![40u8; 4 * 4];
-        let yuv = to_frame(&grey, PixFmt::Yuv420p, 4, 4, 4 * 4 + 2 * 2 * 2);
-        assert!(
-            yuv[..16].iter().all(|v| *v == 40),
-            "the luma plane is the map"
-        );
-        assert!(
-            yuv[16..].iter().all(|v| *v == 128),
-            "and the chroma is neutral"
-        );
-
-        let rgba = to_frame(&grey, PixFmt::Rgba, 4, 4, 4 * 4 * 4);
-        let (pixels, _) = rgba.as_chunks::<4>();
-        for pixel in pixels {
-            assert_eq!(
-                *pixel,
-                [40, 40, 40, 255],
-                "equal in every channel, and opaque"
-            );
-        }
     }
 }
