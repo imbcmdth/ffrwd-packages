@@ -2,6 +2,6 @@
 [target.wasm32-wasip2]
 rustflags = ["-C", "target-feature=+simd128"]
 
-# The wit comes from the installed ffrwd/wasm package: each module's
-# build.rs asks `ffrwd path ffrwd/wasm` for it, so run
-# `ffrwd install -g ffrwd/wasm` once before building.
+# spans_mask's wit comes from the ffrwd/wasm package this project pins: its
+# build.rs asks `ffrwd path ffrwd/wasm` for it, so run `ffrwd install` here
+# once before building. tone needs none; ffrwd-node carries its world.

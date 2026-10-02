@@ -11,6 +11,8 @@ stream read as a per-sample weight, 1 keeps the other track, 0 keeps
 the base, a ramp crossfades. Anything that produces spans makes one -
 a voice detector, a transcriber, a hand-written cue list.
 
+Requires ffrwd 0.29.
+
 ## Exports
 
 Video:
@@ -28,7 +30,7 @@ Audio:
 - `replace_where(a, mask, other)` - the one merge - reused by the rest. `a` where the mask is 0, `other` where it is 1: `a + mask * (other - a)`, over `amultiply` and `amix`.
 - `mute_where(a, mask)` - silence.
 - `bleep_where(a, mask, frequency DEFAULT 1000, level DEFAULT 0.3)` - a tone.
-- `tone(a, frequency DEFAULT 1000, level DEFAULT 0.3)` - a sine the length of `a`, at its rate and channels, `a`'s samples never read. A wasm module, because a generated source has no length to inherit.
+- `tone(a, frequency DEFAULT 1000, level DEFAULT 0.3)` - a sine the length of `a`, at its rate and channels in f32, `a`'s samples never read. A wasm module, because a generated source has no length to inherit.
 
 ## Two things about the mask
 
@@ -72,10 +74,12 @@ others, narrow the rows first with the gather spelling:
 
 ## Building
 
-The two audio modules build against the wit from the installed
-`ffrwd/wasm` package:
+`spans_mask` builds against the wit of the `ffrwd/wasm` version the
+manifest names, which its `build.rs` asks `ffrwd path` for, so the
+package is installed here first. `tone` is a node written with
+`ffrwd-node`, which carries its own world.
 
 ```
-ffrwd install -g ffrwd/wasm
+ffrwd install
 cargo build --target wasm32-wasip2 --release
 ```

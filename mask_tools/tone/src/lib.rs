@@ -1,77 +1,36 @@
-//! A sine the length of the stream it is handed: `frequency` Hz at amplitude
-//! `level`, in the track's own rate and channel count, for exactly as many
-//! samples as arrived. The samples of the input are never listened to - only
-//! how many there are and when they start - so what leaves is a tone and
-//! nothing of the audio it was cut to.
+//! A sine the length of the audio it is cut to: `frequency` Hz at amplitude
+//! `level`, f32 in that audio's own rate and channel count, one run of samples
+//! for every run that arrives and at its time. The samples that arrive are
+//! never fetched: a tick says how many there are and when they start, and
+//! that is all a tone needs of them.
 //!
 //! It exists because a generated source cannot inherit a stream's length. A
 //! bleep laid over a mask needs a tone as long as the track, and
 //! `sine(duration => ...)` has to be told a number somebody worked out;
 //! `tone(a)` is told by the stream.
 //!
-//! The phase carries from one call to the next, so the wave runs on across a
+//! The phase carries from one tick to the next, so the wave runs on across a
 //! window boundary rather than restarting - which is what keeps the click out
 //! of a tone assembled a window at a time.
 
-// `generate_all`: `window-filter`'s records live in `ffrwd:av`'s own `types`
-// interface, a second package the world never names directly.
-wit_bindgen::generate!({
-    path: ["wit", "wit-world"],
-    world: "ffrwd:tone/tone",
-    generate_all,
-});
-
-use std::cell::RefCell;
 use std::f64::consts::TAU;
 
-use exports::ffrwd::av::window_filter::{
-    Format, FramePayload, Guest, InWindow, Meta, OutFrame, Processed, StreamInfo, WindowMeta,
-};
+use ffrwd_node::{Bound, Init, Input, Node, Out, Output, Rational, Result, Shape, Tick};
 use serde::Deserialize;
 
-/// Samples one call carries, the same chunk `spans_mask` works in.
+/// Samples one tick carries, the same chunk `spans_mask` works in.
 const WINDOW: u32 = 4096;
 
 /// The one sample format this module writes, and the width of one value.
 const SAMPLE_FMT: &str = "f32";
 const SAMPLE_BYTES: usize = 4;
 
-/// The highest frequency and level that mean anything: past half the rate a
-/// sine is an alias of a lower one, and past unity it is clipping.
-const MAX_FREQUENCY: f64 = 192_000.0;
-const MAX_LEVEL: f64 = 1.0;
-
 const PARAMS_SCHEMA: &str = r#"{"type":"object","properties":{"frequency":{"type":"number","exclusiveMinimum":0,"maximum":192000,"default":1000},"level":{"type":"number","minimum":0,"maximum":1,"default":0.3}},"additionalProperties":false}"#;
 
-/// The censor's own pitch: well inside speech's band, so it covers what it
-/// replaces, and high enough to be heard as a mark rather than a hum.
-fn default_frequency() -> f64 {
-    1000.0
-}
-
-/// Loud enough to stand for the speech it replaces, quiet enough not to be
-/// the loudest thing in the mix.
-fn default_level() -> f64 {
-    0.3
-}
-
 #[derive(Clone, Copy, Deserialize)]
-// The schema says these two and no others, and this is what makes that true.
-#[serde(deny_unknown_fields)]
 struct Params {
-    #[serde(default = "default_frequency")]
     frequency: f64,
-    #[serde(default = "default_level")]
     level: f64,
-}
-
-impl Default for Params {
-    fn default() -> Params {
-        Params {
-            frequency: default_frequency(),
-            level: default_level(),
-        }
-    }
 }
 
 /// The wave being drawn: where it is, and how far it turns per sample.
@@ -109,142 +68,78 @@ impl Oscillator {
     }
 }
 
-/// What `init` settled.
-struct Opened {
+struct Tone {
+    a: u32,
+    counts_samples: bool,
+    width: usize,
     oscillator: Oscillator,
 }
 
-thread_local! {
-    static OPENED: RefCell<Option<Opened>> = const { RefCell::new(None) };
-}
+impl Node for Tone {
+    const NAME: &'static str = "tone";
+    const VERSION: &'static str = "0.2.0";
+    const PARAMS_SCHEMA: &'static str = PARAMS_SCHEMA;
+    type Params = Params;
 
-fn parse_params(params: &str) -> Result<Params, String> {
-    let trimmed = params.trim();
-    let parsed: Params = if trimmed.is_empty() {
-        Params::default()
-    } else {
-        serde_json::from_str(trimmed).map_err(|e| format!("tone cannot read its params: {e}"))?
-    };
-    if !parsed.frequency.is_finite() || parsed.frequency <= 0.0 || parsed.frequency > MAX_FREQUENCY
-    {
-        return Err(format!(
-            "tone needs frequency in hertz above 0 and no more than {MAX_FREQUENCY}, got {}",
-            parsed.frequency
-        ));
-    }
-    if !parsed.level.is_finite() || !(0.0..=MAX_LEVEL).contains(&parsed.level) {
-        return Err(format!(
-            "tone needs level between 0 and {MAX_LEVEL}, got {}",
-            parsed.level
-        ));
-    }
-    Ok(parsed)
-}
-
-struct Tone;
-
-impl Guest for Tone {
-    fn describe() -> WindowMeta {
-        WindowMeta {
-            meta: Meta {
-                name: "tone".to_string(),
-                version: "0.1.0".to_string(),
-                params_schema: PARAMS_SCHEMA.to_string(),
-                rows_schema: String::new(),
-                // An audio module, so it names no pixel formats.
-                pixel_formats: vec![],
-                sample_formats: vec![SAMPLE_FMT.to_string()],
-                // The tone takes the track's own rate and channel count,
-                // whatever they are, so neither is narrowed here.
-                sample_rates: vec![],
-                channel_counts: vec![],
-                rows_language: vec![],
-            },
-            window: WINDOW,
-            stride: WINDOW,
-            // The phase carries from one call to the next.
-            pure: false,
-            // One payload out for every payload in, at its own pts and its
-            // own length: the tone is the input's timeline exactly, which is
-            // the whole point of taking a stream it never listens to.
-            one_to_one: true,
-            // Whatever arrived with the samples is nothing to a sine.
-            reads_rows: false,
-            forwards_rows: false,
-            // One stream in: the audio the tone is cut to.
-            inputs: 1,
-        }
+    fn shape(_: &Params, _: &Bound) -> Result<Shape> {
+        Ok(Shape::new()
+            .input(Input::audio("a").clock().window(WINDOW, WINDOW))
+            .output(Output::like("a").sample_format(SAMPLE_FMT))
+            .one_to_one())
     }
 
-    fn init(format: Format, _stream_info: StreamInfo, params: String) -> Result<(), String> {
-        let Format::Audio(audio) = format else {
-            return Err("tone writes samples, and this stream is video".to_string());
+    fn init(params: Params, init: &Init) -> Result<Tone> {
+        let a = init.stream("a")?;
+        let audio = a
+            .audio_format()
+            .ok_or("tone is cut to audio, and `a` is not audio")?;
+        let sample_bytes = match audio.sample_fmt.as_str() {
+            "f32" => 4,
+            "s16" => 2,
+            other => return Err(format!("tone does not accept sample format {other}").into()),
         };
-        if audio.sample_fmt != SAMPLE_FMT {
-            return Err(format!(
-                "tone does not accept sample format {}",
-                audio.sample_fmt
-            ));
-        }
-        let parsed = parse_params(&params)?;
-
-        OPENED.with(|o| {
-            *o.borrow_mut() = Some(Opened {
-                oscillator: Oscillator::new(
-                    f64::from(audio.sample_rate),
-                    audio.channels as usize,
-                    parsed,
-                ),
-            });
-        });
-        Ok(())
-    }
-
-    fn set_params(params: String) -> Result<(), String> {
-        let parsed = parse_params(&params)?;
-        OPENED.with(|o| {
-            if let Some(opened) = o.borrow_mut().as_mut() {
-                // The phase stands: a new frequency turns the wave faster
-                // from here rather than starting it again.
-                opened.oscillator.params = parsed;
-            }
-        });
-        Ok(())
-    }
-
-    fn process(window: &InWindow, _trailing: Vec<String>, _last: bool) -> Processed {
-        OPENED.with(|o| {
-            let mut borrowed = o.borrow_mut();
-            let opened = borrowed
-                .as_mut()
-                .expect("init settles the format before any audio arrives");
-            let width = opened.oscillator.channels * SAMPLE_BYTES;
-
-            let mut frames = Vec::with_capacity(window.len() as usize);
-            for index in 0..window.len() {
-                // The samples are fetched for their COUNT alone - the tone is
-                // as long as the audio it was cut to, and the window says a
-                // payload's size no other way.
-                let samples = window.fetch(index).len() / width;
-                frames.push(OutFrame {
-                    pts: window.pts(index),
-                    frame: FramePayload::New(opened.oscillator.draw(samples)),
-                    rows: vec![],
-                });
-            }
-            Processed {
-                frames,
-                trailing: vec![],
-            }
+        let channels = audio.channels as usize;
+        Ok(Tone {
+            a: a.id,
+            counts_samples: a.info.time_base == Rational::new(1, audio.sample_rate as i32),
+            width: sample_bytes * channels,
+            oscillator: Oscillator::new(f64::from(audio.sample_rate), channels, params),
         })
     }
+
+    fn set_params(&mut self, params: Params) -> Result<()> {
+        // The phase stands: a new frequency turns the wave faster from here
+        // rather than starting it again.
+        self.oscillator.params = params;
+        Ok(())
+    }
+
+    fn process(&mut self, tick: &Tick, out: &mut Out) -> Result<()> {
+        for frame in tick.frames(self.a) {
+            let samples = match frame.duration {
+                Some(duration) if self.counts_samples => duration as usize,
+                // A duration in any other time base was rounded on its way
+                // there; the bytes are the count exactly.
+                _ => tick.fetch(self.a, frame.index).len() / self.width,
+            };
+            out.frame(
+                "a",
+                frame.pts,
+                frame.duration,
+                self.oscillator.draw(samples),
+            )?;
+        }
+        Ok(())
+    }
 }
 
-export!(Tone);
+ffrwd_node::export!(Tone);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ffrwd_node::mock::Harness;
+    use ffrwd_node::{BoundStream, Payload};
 
     const RATE: f64 = 8000.0;
 
@@ -261,6 +156,68 @@ mod tests {
             .map(f32::from_le_bytes)
             .step_by(channels)
             .collect()
+    }
+
+    fn read(written: &str) -> std::result::Result<Params, String> {
+        ffrwd_node::read_params::<Params>(PARAMS_SCHEMA, written).map(|(params, _)| params)
+    }
+
+    fn made(tone: &mut Harness<Tone>, tick: ffrwd_node::mock::Tick) -> (i64, Option<i64>, Vec<u8>) {
+        let emitted = tone.process(&tick).expect("processes");
+        let [Payload::Frame {
+            pts,
+            duration,
+            data,
+        }] = &emitted.on("a")[..]
+        else {
+            panic!("one run out per run in: {emitted:?}")
+        };
+        (*pts, *duration, data.clone())
+    }
+
+    #[test]
+    fn the_tone_follows_its_audio_in_f32() {
+        let a = BoundStream::audio("a", 0, 44_100, 1, "s16");
+        let tone = Harness::<Tone>::new("", vec![a]).expect("opens");
+        let shape = tone.shape();
+        let input = &shape.inputs[0];
+        assert_eq!((input.window, input.stride), (WINDOW, WINDOW));
+        assert!(
+            input.accepts.sample_formats.is_empty(),
+            "never read, so any"
+        );
+        let like = shape.outputs[0].like.as_ref().expect("follows `a`");
+        assert_eq!(
+            (like.port.as_deref(), like.sample_format.as_deref()),
+            (Some("a"), Some("f32"))
+        );
+        assert!(shape.one_to_one && !shape.pure);
+    }
+
+    #[test]
+    fn a_run_s_length_comes_from_its_duration_and_its_samples_stay_unread() {
+        let a = BoundStream::audio("a", 0, 48_000, 2, "f32");
+        let mut tone = Harness::<Tone>::new("", vec![a]).expect("opens");
+        // The run's bytes are empty here: a tone that fetched them would draw
+        // nothing.
+        let tick = tone
+            .tick(4096)
+            .frame_with(0, 4096, Some(4096), &[], Vec::new());
+        let (pts, duration, data) = made(&mut tone, tick);
+        assert_eq!((pts, duration), (4096, Some(4096)));
+        assert_eq!(data.len(), 4096 * 2 * 4, "stereo, f32");
+    }
+
+    #[test]
+    fn a_run_counted_in_another_time_base_is_measured_by_its_bytes() {
+        let mut a = BoundStream::audio("a", 0, 48_000, 1, "s16");
+        a.info.time_base = Rational::new(1, 1000);
+        let mut tone = Harness::<Tone>::new("", vec![a]).expect("opens");
+        let tick = tone
+            .tick(0)
+            .frame_with(0, 0, Some(85), &[], vec![0; 4096 * 2]);
+        let (_, _, data) = made(&mut tone, tick);
+        assert_eq!(data.len(), 4096 * 4, "4096 samples, not 85 ms of them");
     }
 
     #[test]
@@ -330,24 +287,25 @@ mod tests {
 
     #[test]
     fn params_outside_the_schema_are_refused_by_name() {
-        assert!(parse_params(r#"{"frequency":0}"#).is_err());
-        assert!(parse_params(r#"{"frequency":-440}"#).is_err());
-        assert!(parse_params(r#"{"level":1.5}"#).is_err());
-        assert!(parse_params(r#"{"level":-0.1}"#).is_err());
-        assert!(parse_params(r#"{"pitch":440}"#).is_err());
+        assert!(read(r#"{"frequency":0}"#).is_err());
+        assert!(read(r#"{"frequency":-440}"#).is_err());
+        assert!(read(r#"{"frequency":200000}"#).is_err());
+        assert!(read(r#"{"level":1.5}"#).is_err());
+        assert!(read(r#"{"level":-0.1}"#).is_err());
+        assert!(read(r#"{"pitch":440}"#).is_err());
     }
 
     #[test]
     fn no_params_at_all_are_the_defaults() {
         for written in ["", "{}", "  "] {
-            let parsed = parse_params(written).expect("the defaults");
+            let parsed = read(written).expect("the defaults");
             assert_eq!((parsed.frequency, parsed.level), (1000.0, 0.3));
         }
     }
 
     #[test]
     fn each_parameter_can_be_set_on_its_own() {
-        let parsed = parse_params(r#"{"frequency":440}"#).expect("one of them");
+        let parsed = read(r#"{"frequency":440}"#).expect("one of them");
         assert_eq!(parsed.frequency, 440.0);
         assert_eq!(parsed.level, 0.3, "the rest keep their defaults");
     }
