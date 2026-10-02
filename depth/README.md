@@ -3,7 +3,7 @@
 Monocular depth as a matte. `depth(v)` returns the
 scene's depth as a grayscale video stream - near bright, far dark. Ready for everything that reads a matte!
 
-Requires ffrwd 0.29.
+Requires ffrwd 0.29, whose `ffrwd/wasm` is 0.19.1.
 
 There is no invert option. ffmpeg's own `negate` filter is the
 inversion: `negate(ffrwd.depth.depth(v))` is far-bright.

@@ -1,11 +1,11 @@
 {
   "name": "ffrwd/mask_tools",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Composition over a matte, video and audio, over native ffmpeg: blur or mosaic where a matte is white, mute or bleep where a mask is 1. Two small wasm modules turn cue rows into an audio mask and make a tone the length of a track; the rest is SQL.",
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
   "dependencies": {
-    "ffrwd/wasm": "0.19.0"
+    "ffrwd/wasm": "0.19.1"
   },
   "keywords": [
     "mask",

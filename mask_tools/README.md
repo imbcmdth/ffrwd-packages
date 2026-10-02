@@ -11,7 +11,7 @@ stream read as a per-sample weight, 1 keeps the other track, 0 keeps
 the base, a ramp crossfades. Anything that produces spans makes one -
 a voice detector, a transcriber, a hand-written cue list.
 
-Requires ffrwd 0.29.
+Requires ffrwd 0.29, whose `ffrwd/wasm` is 0.19.1.
 
 ## Exports
 

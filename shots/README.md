@@ -5,7 +5,7 @@ Hard-cut detection, hosted in wasm. `simple_detector(v)` writes a
 steps whenever a frame's luma grid differs enough from the one before
 it, and `start_t` is when the frame's shot began.
 
-Requires ffrwd 0.29.
+Requires ffrwd 0.29, whose `ffrwd/wasm` is 0.19.1.
 
 ## License
 
