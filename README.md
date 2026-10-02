@@ -12,7 +12,7 @@ at ffrwd.video serves the published versions.
 | `examples/` | the starter shelf, recipes only — a rendition ladder, manifest-to-mp4, poster frames, a contact sheet, motion thumbnails |
 | `mask_tools/` | composition over a matte, video and audio, over native ffmpeg — blur, mosaic, spotlight or cut out what a matte marks; mute or bleep where an audio mask is 1, the mask cut from cue rows by a small wasm module |
 | `depth/` | monocular depth as a matte, hosted in wasm — near bright, far dark, beside the picture for everything that reads a matte |
-| `shots/` | hard-cut detection, hosted in wasm — a `{"shot": n}` row on every frame, stepping at each cut |
+| `shots/` | hard-cut detection, hosted in wasm: a `{"start_t": s, "shot": n}` row on every frame, the shot stepping at each cut |
 
 Two official packages live in their own repositories for licensing
 reasons: `ffrwd/yolo26` (AGPL-3.0, after its weights) and `ffrwd/moq`
@@ -20,14 +20,17 @@ reasons: `ffrwd/yolo26` (AGPL-3.0, after its weights) and `ffrwd/moq`
 
 ## Building the wasm
 
-A package's modules build against the wit from the installed
-`ffrwd/wasm` package:
+From the package's own directory (`depth/`, `shots/` and `mask_tools/`
+ship modules):
 
 ```
-ffrwd install -g ffrwd/wasm
 cargo build --target wasm32-wasip2 --release
 ```
 
-run from the package's own directory (`depth/`, `shots/` and `mask_tools/`
-ship modules). Publishing is `ffrwd publish` from the package directory,
-which validates everything first.
+`depth`, `simple_detector` and `tone` are nodes written with
+`ffrwd-node`, which carries the world they are built against, and the
+three packages holding them need ffrwd 0.29. `mask_tools`' `spans_mask`
+still reads its wit from the `ffrwd/wasm` version the manifest pins, so
+`ffrwd install` runs in `mask_tools/` before its build. Publishing is
+`ffrwd publish` from the package directory, which validates everything
+first.

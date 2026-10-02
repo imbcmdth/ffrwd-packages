@@ -17,10 +17,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: depth
-      - name: Install ffrwd and the wit package
-        run: |
-          pip install ffrwd
-          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("depth/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
       - name: Build depth's module
         working-directory: depth
         run: cargo build --target wasm32-wasip2 --release
@@ -36,10 +32,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: shots
-      - name: Install ffrwd and the wit package
-        run: |
-          pip install ffrwd
-          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("shots/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
       - name: Build shots' module
         working-directory: shots
         run: cargo build --target wasm32-wasip2 --release
@@ -55,10 +47,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: mask_tools
-      - name: Install ffrwd and the wit package
+      - name: Install ffrwd and spans_mask's wit
+        working-directory: mask_tools
         run: |
           pip install ffrwd
-          ffrwd install -g "ffrwd/wasm@$(python -c 'import json; print(json.load(open("mask_tools/ffrwd.json"))["dependencies"]["ffrwd/wasm"])')"
+          ffrwd install
       - name: Build mask_tools' modules
         working-directory: mask_tools
         run: cargo build --target wasm32-wasip2 --release
