@@ -1,0 +1,25 @@
+[package]
+name = "masked-gpu"
+version = "0.1.0"
+edition = "2021"
+
+# `blur_where` and `mosaic_where` on the sidecar's device, as
+# masked_gpu.wasm. A node beside ffrwd:gpu: it imports wasi:webgpu, so it
+# runs only where the sidecar is granted the device.
+[lib]
+name = "masked_gpu"
+crate-type = ["cdylib"]
+
+[dependencies]
+ffrwd-node = { git = "https://github.com/imbcmdth/ffrwd-node", tag = "v0.2.0" }
+serde = { version = "1.0.229", features = ["derive"] }
+
+# The `ffrwd:gpu` bindings and raw `wasi:webgpu` (wit/, the sidecar's
+# wit-gpu/), for the module alone.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = "0.57.1"
+
+# The tests check that every pass's WGSL validates, with the naga the
+# sidecar's wgpu compiles it with.
+[dev-dependencies]
+naga = { version = "29.0.4", features = ["wgsl-in"] }

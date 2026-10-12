@@ -23,6 +23,11 @@ Video:
 - `spotlight(v, matte, dim DEFAULT 0.6)` - darkens everything but the matte.
 - `cutout(v, matte, background)` - the matte as alpha, over a new background.
 
+On the GPU, a wasm module holding the picture and the matte on the sidecar's device:
+
+- `masked_gpu(v, matte, effect, sigma DEFAULT 12, size DEFAULT 16, memory DEFAULT 'gpu')` - `effect` is `'blur'`, a Gaussian of `sigma`, or `'mosaic'`, the average of each `size` by `size` block from the top-left corner. Then `v + (filtered - v) * matte / 255` in 8 bits, the matte's weight its red channel, so white is the filtered picture exactly and black is `v` exactly. The mosaic is ffmpeg's `pixelize` to the bit; `gblur` approximates the same Gaussian, within a mean of 2 levels. The picture leaves as rgba. With `memory => 'host'` the module uploads the frames, runs the same passes and reads the result back.
+- `blur_where_gpu(v, matte, sigma DEFAULT 12, memory DEFAULT 'gpu')` and `mosaic_where_gpu(v, matte, size DEFAULT 16, memory DEFAULT 'gpu')` - the two over it.
+
 Audio:
 
 - `spans_mask(a, cues, grow DEFAULT 0, feather DEFAULT 0)` - the rows rasterized into a mask, the twin of a box list's matte: 1 inside each cue's span, 0 outside, at `a`'s rate and channel count. `cues` are any rows carrying `start_t` and `end_t`. `grow` pads each span by that many milliseconds; `feather` ramps the edges over that many. Overlapping spans union. A wasm module, `a`'s samples never read.
@@ -61,8 +66,9 @@ WHERE a.index = 1
 
 ## Building
 
-Both modules are nodes written with `ffrwd-node`, which carries its own
-world.
+The three modules are nodes written with `ffrwd-node`, which carries its
+own world. `masked-gpu` also binds `ffrwd:gpu` over the copy of its wit
+in `masked-gpu/wit/`, and its WGSL is validated with naga in its tests.
 
 ```
 cargo build --target wasm32-wasip2 --release

@@ -10,6 +10,7 @@
 # wherever the package is installed.
 members = [
     "composite",
+    "masked-gpu",
     "spans-mask",
     "tone",
 ]

@@ -74,3 +74,36 @@ CREATE FUNCTION cutout(v video_stream, matte video_stream, background video_stre
 RETURNS video_stream AS $$
   SELECT masked(background, matte, v)
 $$ LANGUAGE sql;
+
+-- `blur_where` and `mosaic_where` on the sidecar's device, a wasm module
+-- importing wasi:webgpu, so it runs where the sidecar is granted the GPU.
+-- The same arithmetic as the merge above, in compute passes: `effect` is
+-- `blur`, a Gaussian of `sigma` (radius `ceil(3 * sigma)`, edges clamped,
+-- which ffmpeg's `gblur` approximates), or `mosaic`, the average of each
+-- `size` by `size` block from the top-left corner, as `pixelize` takes it.
+-- Then `v + (filtered - v) * matte / 255` in 8 bits, the matte's weight its
+-- red channel: a matte of 255 is the filtered picture exactly, 0 is `v`
+-- exactly.
+--
+-- `memory => 'gpu'` holds `v`, the matte and the result on the device, so
+-- a picture decoded there is filtered and encoded without coming back to
+-- host memory. `memory => 'host'` runs the same passes on frames uploaded
+-- from host memory and reads the result back. Either way the picture is
+-- rgba.
+CREATE FUNCTION masked_gpu(v video_stream, matte video_stream, effect text,
+                           sigma number DEFAULT 12, size number DEFAULT 16,
+                           memory text DEFAULT 'gpu')
+RETURNS video_stream
+  AS 'target/wasm32-wasip2/release/masked_gpu.wasm', 'masked_gpu' LANGUAGE wasm;
+
+CREATE FUNCTION blur_where_gpu(v video_stream, matte video_stream, sigma number DEFAULT 12,
+                               memory text DEFAULT 'gpu')
+RETURNS video_stream AS $$
+  SELECT masked_gpu(v, matte, 'blur', sigma => sigma, memory => memory)
+$$ LANGUAGE sql;
+
+CREATE FUNCTION mosaic_where_gpu(v video_stream, matte video_stream, size number DEFAULT 16,
+                                 memory text DEFAULT 'gpu')
+RETURNS video_stream AS $$
+  SELECT masked_gpu(v, matte, 'mosaic', size => size, memory => memory)
+$$ LANGUAGE sql;
