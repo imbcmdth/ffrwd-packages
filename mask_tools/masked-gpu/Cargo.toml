@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 ffrwd-node = { git = "https://github.com/imbcmdth/ffrwd-node", tag = "v0.2.0" }
 serde = { version = "1.0.229", features = ["derive"] }
 
-# The `ffrwd:gpu` bindings and raw `wasi:webgpu` (wit/, the sidecar's
+# The `ffrwd:gpu` bindings and raw `wasi:webgpu` (wit-gpu/, the sidecar's
 # wit-gpu/), for the module alone.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen = "0.57.1"

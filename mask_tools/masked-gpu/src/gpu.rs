@@ -1,7 +1,7 @@
 //! The device's half: `ffrwd:gpu@0.1.0` beside the node world, and the
 //! passes on raw `wasi:webgpu`. `ports.memory` says which ports are held on
 //! the GPU, `frames.planes` hands a frame of one as a texture, and
-//! `frames.emit` hands a texture back as a frame. `wit/` is the sidecar's
+//! `frames.emit` hands a texture back as a frame. `wit-gpu/` is the sidecar's
 //! `wit-gpu/`.
 
 mod bindings {
@@ -9,7 +9,7 @@ mod bindings {
     // ffrwd:gpu and wasi:webgpu, and without it bindgen expects them to
     // have been generated somewhere else.
     wit_bindgen::generate!({
-        path: "wit",
+        path: "wit-gpu",
         world: "ffrwd:gpu/gpu-module@0.1.0",
         generate_all,
     });

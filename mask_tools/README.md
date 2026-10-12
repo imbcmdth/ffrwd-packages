@@ -68,7 +68,7 @@ WHERE a.index = 1
 
 The three modules are nodes written with `ffrwd-node`, which carries its
 own world. `masked-gpu` also binds `ffrwd:gpu` over the copy of its wit
-in `masked-gpu/wit/`, and its WGSL is validated with naga in its tests.
+in `masked-gpu/wit-gpu/`, and its WGSL is validated with naga in its tests.
 
 ```
 cargo build --target wasm32-wasip2 --release
