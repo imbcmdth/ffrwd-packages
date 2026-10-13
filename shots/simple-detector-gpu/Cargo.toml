@@ -1,0 +1,27 @@
+[package]
+name = "simple-detector-gpu"
+version = "0.2.0"
+edition = "2021"
+
+# simple_detector's own source with the `gpu` feature on: the build that
+# scores each frame in a pass on the sidecar's device and may hold its frames
+# there, as simple_detector_gpu.wasm beside the host build's
+# simple_detector.wasm.
+[lib]
+name = "simple_detector_gpu"
+path = "../simple_detector/src/lib.rs"
+crate-type = ["cdylib"]
+
+[features]
+default = ["gpu"]
+gpu = ["dep:wit-bindgen"]
+
+[dependencies]
+ffrwd-node = { git = "https://github.com/imbcmdth/ffrwd-node", tag = "v0.2.0" }
+serde = { version = "1.0.229", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = { version = "0.57.1", optional = true }
+
+[dev-dependencies]
+naga = { version = "29.0.4", features = ["wgsl-in"] }

@@ -1,9 +1,11 @@
 [workspace]
-# The wasm module this package ships. It builds into
+# The wasm modules this package ships: simple_detector, and the same source
+# with its `gpu` feature on as simple_detector_gpu. They build into
 # target/wasm32-wasip2/release/, which is where the package's lib SQL names
-# it.
+# them.
 members = [
     "simple_detector",
+    "simple-detector-gpu",
 ]
 resolver = "2"
 

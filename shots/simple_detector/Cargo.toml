@@ -6,6 +6,22 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# The GPU build: a node beside ffrwd:gpu whose frame scores are a pass on the
+# sidecar's device. The `simple-detector-gpu` crate builds this source with
+# it on, as simple_detector_gpu.wasm.
+gpu = ["dep:wit-bindgen"]
+
 [dependencies]
 ffrwd-node = { git = "https://github.com/imbcmdth/ffrwd-node", tag = "v0.2.0" }
 serde = { version = "1.0.229", features = ["derive"] }
+
+# The ffrwd:gpu bindings and raw wasi:webgpu (wit-gpu/, the sidecar's
+# wit-gpu/), for the `gpu` feature on the module alone.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = { version = "0.57.1", optional = true }
+
+# The tests check that the pass's WGSL validates, with the naga the
+# sidecar's wgpu compiles it with.
+[dev-dependencies]
+naga = { version = "29.0.4", features = ["wgsl-in"] }

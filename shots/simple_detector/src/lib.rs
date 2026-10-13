@@ -12,19 +12,143 @@
 //!
 //! The luma-grid rule: cheap, and blind to a cut a colour grade alone would
 //! make. Room stays beside it in this package for a better detector later.
+//!
+//! The `gpu` feature builds `simple_detector_gpu`, the same detector with a
+//! `memory` param. On `gpu` the frame is held on the sidecar's device and
+//! one compute pass makes its grid there in the same integer arithmetic, so
+//! only the grid's 1024 cells come back to host memory. On `host` the frame
+//! is fetched and the grid made here, as `simple_detector` does.
 
 use ffrwd_node::{Bound, Init, Input, Node, Out, Output, Result, Shape, Tick};
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "gpu", target_arch = "wasm32"))]
+mod gpu;
+
+/// Off wasm32 there is no device: the shape and params are tested on the
+/// host, and opening the pass says why it stops.
+#[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
+mod gpu {
+    pub struct Grid;
+
+    impl Grid {
+        pub fn open(_width: u32, _height: u32, _rgba: bool) -> Result<Grid, String> {
+            Err("simple_detector: the pass runs on the sidecar's device, \
+                 which only the wasm32 module reaches"
+                .to_owned())
+        }
+
+        pub fn cells(&self, _v: u32, _index: u32, _into: &mut Vec<u8>) -> Result<(), String> {
+            unreachable!("no device is opened off wasm32")
+        }
+    }
+}
+
+#[cfg(not(feature = "gpu"))]
 const PARAMS_SCHEMA: &str = r#"{"type":"object","properties":{"threshold":{"type":"number","exclusiveMinimum":0,"default":12.0}},"additionalProperties":false}"#;
+
+/// The GPU build's: the threshold, and where `v` is held.
+#[cfg(feature = "gpu")]
+const PARAMS_SCHEMA: &str = r#"{"type":"object","properties":{"threshold":{"type":"number","exclusiveMinimum":0,"default":12.0},"memory":{"type":"string","enum":["host","gpu"],"default":"host"}},"additionalProperties":false}"#;
 
 /// Cells a frame is reduced to, per side. Small enough that a moving subject
 /// barely moves the average, large enough that a new picture moves all of them.
 const GRID: usize = 32;
 
-#[derive(Deserialize)]
+/// `downsample` as one compute pass: a workgroup a cell, its 64 invocations
+/// totalling the cell's pixels between them, and the total divided by the
+/// pixel count with the remainder dropped. A luma sample is the byte the
+/// plane holds; an rgba pixel's is `(r * 299 + g * 587 + b * 114) / 1000`
+/// of its bytes, as `row_luma_sum` takes it. Each texel is read back to the
+/// byte it holds, so the grid is `downsample`'s to the bit.
+#[cfg(any(all(feature = "gpu", target_arch = "wasm32"), test))]
+const PASS: &str = r#"
+struct Params {
+    width: u32,
+    height: u32,
+    rgba: u32,
+    pad: u32,
+}
+
+@group(0) @binding(0) var plane: texture_2d<f32>;
+@group(0) @binding(1) var<uniform> p: Params;
+@group(0) @binding(2) var<storage, read_write> cells: array<u32>;
+
+const GRID: u32 = 32u;
+
+var<workgroup> total: atomic<u32>;
+
+fn luma(x: u32, y: u32) -> u32 {
+    let texel = textureLoad(plane, vec2<u32>(x, y), 0);
+    if (p.rgba == 0u) {
+        return u32(round(texel.r * 255.0));
+    }
+    let c = vec3<u32>(round(texel.rgb * 255.0));
+    return (c.r * 299u + c.g * 587u + c.b * 114u) / 1000u;
+}
+
+@compute @workgroup_size(8, 8)
+fn main(
+    @builtin(workgroup_id) cell: vec3<u32>,
+    @builtin(local_invocation_id) local: vec3<u32>,
+    @builtin(local_invocation_index) at: u32,
+) {
+    let x0 = cell.x * p.width / GRID;
+    let x1 = max((cell.x + 1u) * p.width / GRID, x0 + 1u);
+    let y0 = cell.y * p.height / GRID;
+    let y1 = max((cell.y + 1u) * p.height / GRID, y0 + 1u);
+    if (at == 0u) {
+        atomicStore(&total, 0u);
+    }
+    workgroupBarrier();
+    var sum = 0u;
+    for (var y = y0 + local.y; y < y1; y += 8u) {
+        for (var x = x0 + local.x; x < x1; x += 8u) {
+            sum += luma(x, y);
+        }
+    }
+    atomicAdd(&total, sum);
+    workgroupBarrier();
+    if (at == 0u) {
+        let count = (y1 - y0) * (x1 - x0);
+        cells[cell.y * GRID + cell.x] = atomicLoad(&total) / count;
+    }
+}
+"#;
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
 struct Params {
     threshold: f64,
+}
+
+/// Where `v` is held.
+#[cfg(feature = "gpu")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Memory {
+    #[default]
+    Host,
+    Gpu,
+}
+
+/// The GPU build's params: the threshold, and where `v` is held.
+#[cfg(feature = "gpu")]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+struct Settings {
+    #[serde(flatten)]
+    detect: Params,
+    #[serde(default)]
+    memory: Memory,
+}
+
+/// The ports held on the GPU for the GPU build's `params`: `v`, when
+/// `memory` is `gpu`.
+#[cfg(all(feature = "gpu", any(target_arch = "wasm32", test)))]
+fn held_ports(params: &str) -> &'static [&'static str] {
+    match ffrwd_node::read_params::<Settings>(PARAMS_SCHEMA, params) {
+        Ok((settings, _)) if settings.memory == Memory::Gpu => &["v"],
+        _ => &[],
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -46,6 +170,9 @@ struct SimpleDetector {
     height: usize,
     pix_fmt: PixFmt,
     threshold: f64,
+    /// The pass, where `v` is held on the GPU.
+    #[cfg(feature = "gpu")]
+    grid: Option<gpu::Grid>,
     /// The previous frame's cells, absent until a frame has been seen.
     previous: Option<Vec<u8>>,
     /// The current frame's cells, reused every frame.
@@ -131,9 +258,15 @@ fn mean_abs_diff(a: &[u8], b: &[u8]) -> f64 {
 }
 
 impl SimpleDetector {
+    /// One frame's row, its bytes reduced to the grid here.
     fn see(&mut self, frame: &[u8], t: f64) -> Cut {
         let mut cells = std::mem::take(&mut self.cells);
         downsample(frame, self.pix_fmt, self.width, self.height, &mut cells);
+        self.compare(cells, t)
+    }
+
+    /// One frame's row, from its grid.
+    fn compare(&mut self, cells: Vec<u8>, t: f64) -> Cut {
         match &self.previous {
             Some(previous) if mean_abs_diff(previous, &cells) > self.threshold => {
                 self.shot += 1;
@@ -152,23 +285,53 @@ impl SimpleDetector {
     }
 }
 
+/// The formats `v` takes: yuv420p first, whose luma is read as it is.
+#[cfg(not(feature = "gpu"))]
+fn pixel_formats(_: &Params) -> &'static [&'static str] {
+    &["yuv420p", "rgba"]
+}
+
+/// The formats `v` takes: on `gpu`, every format the sidecar holds there,
+/// each read as its first plane, the luma, but rgba; on `host`, the host
+/// build's.
+#[cfg(feature = "gpu")]
+fn pixel_formats(settings: &Settings) -> &'static [&'static str] {
+    match settings.memory {
+        Memory::Gpu => &["yuv420p", "rgba", "yuv422p", "yuv444p"],
+        Memory::Host => &["yuv420p", "rgba"],
+    }
+}
+
+#[cfg(not(feature = "gpu"))]
+fn detecting(params: &Params) -> Params {
+    *params
+}
+
+#[cfg(feature = "gpu")]
+fn detecting(settings: &Settings) -> Params {
+    settings.detect
+}
+
 impl Node for SimpleDetector {
     const NAME: &'static str = "simple_detector";
     const VERSION: &'static str = "0.2.0";
     const PARAMS_SCHEMA: &'static str = PARAMS_SCHEMA;
+    #[cfg(not(feature = "gpu"))]
     type Params = Params;
+    #[cfg(feature = "gpu")]
+    type Params = Settings;
 
-    fn shape(_: &Params, _: &Bound) -> Result<Shape> {
+    fn shape(params: &Self::Params, _: &Bound) -> Result<Shape> {
         Ok(Shape::new()
             .input(
                 Input::video("v")
                     .clock()
-                    .pixel_formats(&["yuv420p", "rgba"]),
+                    .pixel_formats(pixel_formats(params)),
             )
             .output(Output::rows("cuts").schema::<Cut>()))
     }
 
-    fn init(params: Params, init: &Init) -> Result<SimpleDetector> {
+    fn init(params: Self::Params, init: &Init) -> Result<SimpleDetector> {
         let v = init.stream("v")?;
         let video = v
             .video_format()
@@ -176,14 +339,28 @@ impl Node for SimpleDetector {
         let pix_fmt = match video.pix_fmt.as_str() {
             "yuv420p" => PixFmt::Yuv420p,
             "rgba" => PixFmt::Rgba,
+            // On the device every planar YUV frame is read as its luma.
+            #[cfg(feature = "gpu")]
+            "yuv422p" | "yuv444p" if params.memory == Memory::Gpu => PixFmt::Yuv420p,
             other => return Err(format!("unsupported pix-fmt: {other:?}").into()),
+        };
+        #[cfg(feature = "gpu")]
+        let grid = match params.memory {
+            Memory::Gpu => Some(gpu::Grid::open(
+                video.width,
+                video.height,
+                pix_fmt == PixFmt::Rgba,
+            )?),
+            Memory::Host => None,
         };
         Ok(SimpleDetector {
             v: v.id,
             width: video.width as usize,
             height: video.height as usize,
             pix_fmt,
-            threshold: params.threshold,
+            threshold: detecting(&params).threshold,
+            #[cfg(feature = "gpu")]
+            grid,
             previous: None,
             cells: Vec::with_capacity(GRID * GRID),
             shot: 0,
@@ -191,16 +368,33 @@ impl Node for SimpleDetector {
         })
     }
 
-    fn set_params(&mut self, params: Params) -> Result<()> {
-        self.threshold = params.threshold;
+    fn set_params(&mut self, params: Self::Params) -> Result<()> {
+        // Where `v` is held is the shape's, settled at init.
+        #[cfg(feature = "gpu")]
+        if (params.memory == Memory::Gpu) != self.grid.is_some() {
+            return Err(
+                "simple_detector cannot move `v` between host and gpu memory while it runs".into(),
+            );
+        }
+        self.threshold = detecting(&params).threshold;
         Ok(())
     }
 
     fn process(&mut self, tick: &Tick, out: &mut Out) -> Result<()> {
         let time_base = tick.time_base();
         for frame in tick.frames(self.v) {
+            let t = time_base.seconds(frame.pts);
+            // A frame held on the GPU is reduced there and never fetched.
+            #[cfg(feature = "gpu")]
+            if let Some(grid) = &self.grid {
+                let mut cells = std::mem::take(&mut self.cells);
+                grid.cells(self.v, frame.index, &mut cells)?;
+                let cut = self.compare(cells, t);
+                out.row("cuts", frame.pts, &cut)?;
+                continue;
+            }
             let pixels = tick.fetch(self.v, frame.index);
-            let cut = self.see(&pixels, time_base.seconds(frame.pts));
+            let cut = self.see(&pixels, t);
             out.row("cuts", frame.pts, &cut)?;
         }
         Ok(())
@@ -356,5 +550,89 @@ mod tests {
             "30 is no cut at 50"
         );
         assert!(detector.set_params(r#"{"threshold":0}"#).is_err());
+    }
+
+    #[test]
+    fn the_pass_validates() {
+        let module = naga::front::wgsl::parse_str(PASS)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(PASS)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(module.entry_points.len(), 1);
+        assert_eq!(
+            module.entry_points[0].workgroup_size,
+            [8, 8, 1],
+            "64 invocations share a cell"
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn memory_defaults_to_host_beside_the_threshold() {
+        let settings = |params: &str| {
+            ffrwd_node::read_params::<Settings>(PARAMS_SCHEMA, params).map(|(s, _)| s)
+        };
+        assert_eq!(
+            settings("").expect("the defaults"),
+            Settings {
+                detect: Params { threshold: 12.0 },
+                memory: Memory::Host,
+            }
+        );
+        assert_eq!(
+            settings(r#"{"threshold":20,"memory":"gpu"}"#).expect("both"),
+            Settings {
+                detect: Params { threshold: 20.0 },
+                memory: Memory::Gpu,
+            }
+        );
+        let error = settings(r#"{"memory":"cpu"}"#).expect_err("not a memory");
+        assert!(error.contains("memory"), "{error}");
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn v_is_held_on_the_gpu_only_when_memory_says_so() {
+        assert_eq!(held_ports(r#"{"memory":"gpu"}"#), ["v"]);
+        for host in ["", "{}", r#"{"memory":"host"}"#, r#"{"memory":"cpu"}"#] {
+            assert!(held_ports(host).is_empty(), "{host}");
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn v_takes_every_format_the_device_holds_on_gpu_and_the_host_builds_on_host() {
+        use ffrwd_node::Runner;
+        let bound = ["v".to_owned()];
+        let on_gpu =
+            Runner::<SimpleDetector>::shape(r#"{"memory":"gpu"}"#, &bound).expect("a shape");
+        assert_eq!(
+            on_gpu.inputs[0].accepts.pixel_formats,
+            ["yuv420p", "rgba", "yuv422p", "yuv444p"]
+        );
+        let on_host =
+            Runner::<SimpleDetector>::shape(r#"{"memory":"host"}"#, &bound).expect("a shape");
+        assert_eq!(on_host.inputs[0].accepts.pixel_formats, ["yuv420p", "rgba"]);
+        for shape in [on_gpu, on_host] {
+            assert_eq!(shape.outputs.len(), 1, "the rows and nothing else");
+            assert_eq!(shape.outputs[0].name, "cuts");
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn memory_is_settled_at_init() {
+        let mut detector = detector(r#"{"memory":"host"}"#);
+        let error = detector
+            .set_params(r#"{"memory":"gpu"}"#)
+            .expect_err("v cannot move");
+        assert!(error.contains("memory"), "{error}");
+        detector
+            .set_params(r#"{"threshold":30,"memory":"host"}"#)
+            .expect("the threshold moves");
     }
 }

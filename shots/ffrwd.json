@@ -4,6 +4,9 @@
   "description": "Hard-cut detection over a luma grid - a `{\"start_t\": s, \"shot\": n}` row on every frame, the shot stepping at each cut.",
   "license": "MIT",
   "homepage": "https://github.com/imbcmdth/ffrwd-packages",
+  "capabilities": [
+    "gpu"
+  ],
   "dependencies": {
     "ffrwd/wasm": "0.19.1"
   },
@@ -14,7 +17,8 @@
     "chapters"
   ],
   "lib": {
-    "simple_detector": "src/simple_detector.sql"
+    "simple_detector": "src/simple_detector.sql",
+    "simple_detector_gpu": "src/simple_detector.sql"
   },
   "bin": {
     "cut-points": "recipes/cut-points.sql"
