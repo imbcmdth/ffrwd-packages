@@ -5,7 +5,7 @@ Hard-cut detection, hosted in wasm. `simple_detector(v)` writes a
 steps whenever a frame's luma grid differs enough from the one before
 it, and `start_t` is when the frame's shot began.
 
-Requires ffrwd 0.29, whose `ffrwd/wasm` is 0.19.1.
+Requires ffrwd 0.30, whose `ffrwd/wasm` is 0.19.1.
 
 ## License
 
@@ -26,7 +26,7 @@ This package is **MIT**.
   `memory => 'gpu'` the picture stays on the GPU and only the grid's
   1024 cells come back to host memory; with `memory => 'host'` the frame
   is fetched and reduced on the CPU. It imports wasi:webgpu, so it runs
-  where the sidecar is granted the GPU.
+  where the sidecar is granted the GPU, and needs ffrwd 0.30.
 
 ## Building
 
