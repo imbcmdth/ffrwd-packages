@@ -205,7 +205,13 @@ mod tests {
 
     /// A frame of `channels` channels where every pixel carries `value`.
     fn flat(width: usize, height: usize, channels: usize, value: u8) -> Frame {
-        Frame::new(width, height, channels, vec![value; width * height * channels]).expect("shape")
+        Frame::new(
+            width,
+            height,
+            channels,
+            vec![value; width * height * channels],
+        )
+        .expect("shape")
     }
 
     #[test]
@@ -231,11 +237,32 @@ mod tests {
             x1: 8,
             y1: 8,
         };
-        assert_eq!(r.inset(2), Rect { x0: 6, y0: 6, x1: 6, y1: 6 });
-        assert_eq!(r.inset(9), Rect { x0: 13, y0: 13, x1: 0, y1: 0 });
+        assert_eq!(
+            r.inset(2),
+            Rect {
+                x0: 6,
+                y0: 6,
+                x1: 6,
+                y1: 6
+            }
+        );
+        assert_eq!(
+            r.inset(9),
+            Rect {
+                x0: 13,
+                y0: 13,
+                x1: 0,
+                y1: 0
+            }
+        );
         assert_eq!(
             r.outset(10, 10, 10),
-            Rect { x0: 0, y0: 0, x1: 10, y1: 10 },
+            Rect {
+                x0: 0,
+                y0: 0,
+                x1: 10,
+                y1: 10
+            },
             "outset clamps to the frame rather than running off it"
         );
     }
@@ -246,7 +273,12 @@ mod tests {
         let mut got = want.clone();
         got.data[0] = 103;
         got.data[3] = 110;
-        let whole = Rect { x0: 0, y0: 0, x1: 2, y1: 1 };
+        let whole = Rect {
+            x0: 0,
+            y0: 0,
+            x1: 2,
+            y1: 1,
+        };
         assert!(differences(&got, &want, whole, 0).len() == 2);
         let worst = differences(&got, &want, whole, 0)[0];
         assert_eq!((worst.x, worst.got, worst.want), (1, 110, 100));
@@ -260,7 +292,12 @@ mod tests {
 
     #[test]
     fn a_flat_block_has_no_spread_and_one_pixel_of_base_gives_it_one() {
-        let whole = Rect { x0: 0, y0: 0, x1: 4, y1: 4 };
+        let whole = Rect {
+            x0: 0,
+            y0: 0,
+            x1: 4,
+            y1: 4,
+        };
         let flat_frame = flat(4, 4, 3, 60);
         assert_eq!(block_spreads(&flat_frame, whole, 4), vec![0, 0, 0]);
 
@@ -276,9 +313,19 @@ mod tests {
     #[test]
     fn block_spreads_only_measures_whole_blocks_of_the_region() {
         let frame = flat(8, 8, 1, 0);
-        let whole = Rect { x0: 0, y0: 0, x1: 8, y1: 8 };
+        let whole = Rect {
+            x0: 0,
+            y0: 0,
+            x1: 8,
+            y1: 8,
+        };
         assert_eq!(block_spreads(&frame, whole, 4).len(), 4);
-        let ragged = Rect { x0: 1, y0: 1, x1: 8, y1: 8 };
+        let ragged = Rect {
+            x0: 1,
+            y0: 1,
+            x1: 8,
+            y1: 8,
+        };
         assert_eq!(
             block_spreads(&frame, ragged, 4).len(),
             1,

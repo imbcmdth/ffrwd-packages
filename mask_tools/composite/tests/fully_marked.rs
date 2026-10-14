@@ -65,7 +65,8 @@ const EDGE: usize = 2;
 /// input 0 the base, input 1 the overlay, input 2 the matte.
 ///
 /// Kept in step with `src/composite.sql` by `sql_still_spells_this`.
-const MASKED: &str = "[2:v:0]format=pix_fmts=gray[m];[1:v:0][m]alphamerge[o];[0:v:0][o]overlay[out0]";
+const MASKED: &str =
+    "[2:v:0]format=pix_fmts=gray[m];[1:v:0][m]alphamerge[o];[0:v:0][o]overlay[out0]";
 
 /// The filters that chain names, which the SQL has to still name too.
 const MASKED_FILTERS: [&str; 3] = ["format", "alphamerge", "overlay"];
@@ -268,7 +269,15 @@ fn layer(ff: &Path, dir: &Path, name: &str, out: &str) -> Frame {
     let mut args: Vec<&str> = Vec::new();
     args.extend(raw_input("yuv420p", &size, &s));
     args.extend([
-        "-frames:v", "1", "-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo", &d,
+        "-frames:v",
+        "1",
+        "-c:v",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-f",
+        "rawvideo",
+        &d,
     ]);
     run(ff, &args);
     frame(&dst)
@@ -382,10 +391,30 @@ fn an_unmarked_region_is_the_base_exactly() {
 
     let outside = MARKED.outset(EDGE, WIDTH, HEIGHT);
     let strips = [
-        Rect { x0: 0, y0: 0, x1: WIDTH, y1: outside.y0 },
-        Rect { x0: 0, y0: outside.y1, x1: WIDTH, y1: HEIGHT },
-        Rect { x0: 0, y0: outside.y0, x1: outside.x0, y1: outside.y1 },
-        Rect { x0: outside.x1, y0: outside.y0, x1: WIDTH, y1: outside.y1 },
+        Rect {
+            x0: 0,
+            y0: 0,
+            x1: WIDTH,
+            y1: outside.y0,
+        },
+        Rect {
+            x0: 0,
+            y0: outside.y1,
+            x1: WIDTH,
+            y1: HEIGHT,
+        },
+        Rect {
+            x0: 0,
+            y0: outside.y0,
+            x1: outside.x0,
+            y1: outside.y1,
+        },
+        Rect {
+            x0: outside.x1,
+            y0: outside.y0,
+            x1: WIDTH,
+            y1: outside.y1,
+        },
     ];
     for strip in strips {
         let wrong = differences(&composed, &base, strip, 0);
@@ -426,7 +455,10 @@ fn a_feathered_ramp_weighs_by_the_matte() {
     let mut levels: Vec<u8> = (0..WIDTH).map(|x| ramp(x, 0)).collect();
     levels.sort_unstable();
     levels.dedup();
-    assert!(levels.len() >= 8, "the ramp has too few steps to say anything");
+    assert!(
+        levels.len() >= 8,
+        "the ramp has too few steps to say anything"
+    );
 
     let mut measured = Vec::new();
     for weight in levels {

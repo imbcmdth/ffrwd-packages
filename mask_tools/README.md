@@ -11,7 +11,7 @@ stream read as a per-sample weight, 1 keeps the other track, 0 keeps
 the base, a ramp crossfades. Anything that produces spans makes one -
 a voice detector, a transcriber, a hand-written cue list.
 
-Requires ffrwd 0.29, whose `ffrwd/wasm` is 0.19.1.
+Requires ffrwd 0.30, whose `ffrwd/wasm` is 0.19.1.
 
 ## Exports
 
@@ -23,7 +23,7 @@ Video:
 - `spotlight(v, matte, dim DEFAULT 0.6)` - darkens everything but the matte.
 - `cutout(v, matte, background)` - the matte as alpha, over a new background.
 
-On the GPU, a wasm module holding the picture and the matte on the sidecar's device:
+On the GPU, a wasm module holding the picture and the matte on the sidecar's device. The `_gpu` functions need ffrwd 0.30:
 
 - `masked_gpu(v, matte, effect, sigma DEFAULT 12, size DEFAULT 16, memory DEFAULT 'gpu')` - `effect` is `'blur'`, a Gaussian of `sigma`, or `'mosaic'`, the average of each `size` by `size` block from the top-left corner. Then `v + (filtered - v) * matte / 255` in 8 bits, the matte's weight its red channel, so white is the filtered picture exactly and black is `v` exactly. The mosaic is ffmpeg's `pixelize` to the bit; `gblur` approximates the same Gaussian, within a mean of 2 levels. The picture leaves as rgba. With `memory => 'host'` the module uploads the frames, runs the same passes and reads the result back.
 - `blur_where_gpu(v, matte, sigma DEFAULT 12, memory DEFAULT 'gpu')` and `mosaic_where_gpu(v, matte, size DEFAULT 16, memory DEFAULT 'gpu')` - the two over it.
